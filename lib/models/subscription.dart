@@ -7,13 +7,9 @@ class Subscription {
   DateTime startDate;
   DateTime renewalDate;
   String category;
-
-  // Network logo for popular subscriptions.
   String logoUrl;
-
-  // Null = automatically generated card color.
-  // Non-null = user-selected card color.
   String? cardColor;
+  String status; // 'active' | 'cancelled' | 'archived'
 
   Subscription({
     required this.name,
@@ -26,7 +22,13 @@ class Subscription {
     this.planName = '',
     this.logoUrl = '',
     this.cardColor,
+    this.status = 'active',
   });
+
+  // ===== Status helpers =====
+  bool get isActive => status == 'active';
+  bool get isCancelled => status == 'cancelled';
+  bool get isArchived => status == 'archived';
 
   double get monthlyCost {
     switch (billingCycle) {
@@ -66,6 +68,7 @@ class Subscription {
       'category': category,
       'logoUrl': logoUrl,
       'cardColor': cardColor,
+      'status': status,
     };
   }
 
@@ -73,7 +76,7 @@ class Subscription {
     return Subscription(
       name: map['name'] ?? '',
       planName: map['planName'] ?? '',
-      price: (map['price'] as num).toDouble(),
+      price: ((map['price'] as num?) ?? 0).toDouble(),
       currency: map['currency'] ?? 'PHP',
       billingCycle: map['billingCycle'] ?? 'Monthly',
       startDate: map['startDate'] != null
@@ -83,6 +86,24 @@ class Subscription {
       category: map['category'] ?? 'Other',
       logoUrl: map['logoUrl'] ?? '',
       cardColor: map['cardColor'],
+      status: map['status'] ?? 'active', // existing docs default to active
+    );
+  }
+
+  // Convenience: copy with new status
+  Subscription copyWithStatus(String newStatus) {
+    return Subscription(
+      name: name,
+      planName: planName,
+      price: price,
+      currency: currency,
+      billingCycle: billingCycle,
+      startDate: startDate,
+      renewalDate: renewalDate,
+      category: category,
+      logoUrl: logoUrl,
+      cardColor: cardColor,
+      status: newStatus,
     );
   }
 }

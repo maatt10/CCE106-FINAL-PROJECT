@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import '../models/subscription.dart';
+import '../theme/app_theme.dart';
 import '../utils/currency_utils.dart';
+import '../widgets/app_background.dart';
 
 class RenewalCalendarScreen extends StatefulWidget {
   final List<Subscription> subscriptions;
@@ -19,215 +22,122 @@ class RenewalCalendarScreen extends StatefulWidget {
       _RenewalCalendarScreenState();
 }
 
-class _RenewalCalendarScreenState
-    extends State<RenewalCalendarScreen> {
+class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _displayedMonth;
 
   @override
   void initState() {
     super.initState();
-
     final now = DateTime.now();
-
-    _selectedDate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
-
-    _displayedMonth = DateTime(
-      now.year,
-      now.month,
-    );
+    _selectedDate = DateTime(now.year, now.month, now.day);
+    _displayedMonth = DateTime(now.year, now.month);
   }
 
-  List<Subscription> _subscriptionsForDate(
-    DateTime date,
-  ) {
-    return widget.subscriptions.where((subscription) {
-      final renewal = subscription.renewalDate;
+  List<Subscription> _subsForDate(DateTime d) => widget.subscriptions
+      .where((s) =>
+          s.renewalDate.year == d.year &&
+          s.renewalDate.month == d.month &&
+          s.renewalDate.day == d.day)
+      .toList();
 
-      return renewal.year == date.year &&
-          renewal.month == date.month &&
-          renewal.day == date.day;
-    }).toList();
-  }
+  bool _hasRenewal(DateTime d) => _subsForDate(d).isNotEmpty;
 
-  bool _hasRenewal(DateTime date) {
-    return _subscriptionsForDate(date).isNotEmpty;
-  }
-
-  void _changeMonth(int amount) {
+  void _changeMonth(int delta) {
     setState(() {
-      _displayedMonth = DateTime(
-        _displayedMonth.year,
-        _displayedMonth.month + amount,
-      );
+      _displayedMonth =
+          DateTime(_displayedMonth.year, _displayedMonth.month + delta);
     });
   }
 
   void _goToToday() {
     final now = DateTime.now();
-
     setState(() {
-      _selectedDate = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      );
-
-      _displayedMonth = DateTime(
-        now.year,
-        now.month,
-      );
+      _selectedDate = DateTime(now.year, now.month, now.day);
+      _displayedMonth = DateTime(now.year, now.month);
     });
   }
 
-  String _monthName(int month) {
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return months[month - 1];
+  bool _isToday(DateTime d) {
+    final n = DateTime.now();
+    return d.year == n.year && d.month == n.month && d.day == n.day;
   }
 
-  String _formatDate(DateTime date) {
-    return '${_monthName(date.month)} '
-        '${date.day}, ${date.year}';
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _monthName(int m) => const [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ][m - 1];
+
+  String _formatDate(DateTime d) =>
+      '${_monthName(d.month)} ${d.day}, ${d.year}';
+
+  String _renewalLabel(DateTime d) {
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final r = DateTime(d.year, d.month, d.day);
+    final diff = r.difference(today).inDays;
+    if (diff < 0) return 'Overdue';
+    if (diff == 0) return 'Renews today';
+    if (diff == 1) return 'Renews tomorrow';
+    if (diff <= 7) return 'In $diff days';
+    return _formatDate(d);
   }
 
-  String _renewalLabel(DateTime date) {
-    final now = DateTime.now();
-
-    final today = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
-
-    final renewalDay = DateTime(
-      date.year,
-      date.month,
-      date.day,
-    );
-
-    final difference =
-        renewalDay.difference(today).inDays;
-
-    if (difference < 0) {
-      return 'Overdue';
-    }
-
-    if (difference == 0) {
-      return 'Renews today';
-    }
-
-    if (difference == 1) {
-      return 'Renews tomorrow';
-    }
-
-    if (difference <= 7) {
-      return 'In $difference days';
-    }
-
-    return _formatDate(date);
-  }
-
+  // ===== Calendar =====
   Widget _buildCalendar() {
-    final firstDayOfMonth = DateTime(
-      _displayedMonth.year,
-      _displayedMonth.month,
-      1,
-    );
-
-    final daysInMonth = DateTime(
-      _displayedMonth.year,
-      _displayedMonth.month + 1,
-      0,
-    ).day;
-
-    // Monday = 1 ... Sunday = 7
-    final startingWeekday =
-        firstDayOfMonth.weekday;
-
-    final totalCells =
-        ((startingWeekday - 1 + daysInMonth) / 7)
-            .ceil() *
-        7;
+    final first = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
+    final daysInMonth =
+        DateTime(_displayedMonth.year, _displayedMonth.month + 1, 0).day;
+    final startWeekday = first.weekday;
+    final cells = ((startWeekday - 1 + daysInMonth) / 7).ceil() * 7;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
+        color: Colors.white.withOpacity(0.82),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
       ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IconButton(
-                onPressed: () => _changeMonth(-1),
-                icon: const Icon(
-                  Icons.chevron_left,
-                ),
-              ),
+              _navBtn(Icons.chevron_left, () => _changeMonth(-1)),
               Column(
                 children: [
                   Text(
-                    _monthName(
-                      _displayedMonth.month,
-                    ),
+                    _monthName(_displayedMonth.month),
                     style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   Text(
                     '${_displayedMonth.year}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 13,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
-              IconButton(
-                onPressed: () => _changeMonth(1),
-                icon: const Icon(
-                  Icons.chevron_right,
-                ),
-              ),
+              _navBtn(Icons.chevron_right, () => _changeMonth(1)),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
 
           Row(
             children: const [
-              _WeekdayLabel('Mon'),
-              _WeekdayLabel('Tue'),
-              _WeekdayLabel('Wed'),
-              _WeekdayLabel('Thu'),
-              _WeekdayLabel('Fri'),
-              _WeekdayLabel('Sat'),
-              _WeekdayLabel('Sun'),
+              _Weekday('M'), _Weekday('T'), _Weekday('W'),
+              _Weekday('T'), _Weekday('F'), _Weekday('S'), _Weekday('S'),
             ],
           ),
 
@@ -235,96 +145,79 @@ class _RenewalCalendarScreenState
 
           GridView.builder(
             shrinkWrap: true,
-            physics:
-                const NeverScrollableScrollPhysics(),
-            itemCount: totalCells,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: cells,
             gridDelegate:
                 const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               childAspectRatio: 0.9,
             ),
             itemBuilder: (context, index) {
-              final dayNumber =
-                  index - (startingWeekday - 1) + 1;
-
-              if (dayNumber < 1 ||
-                  dayNumber > daysInMonth) {
+              final dayNum = index - (startWeekday - 1) + 1;
+              if (dayNum < 1 || dayNum > daysInMonth) {
                 return const SizedBox();
               }
-
               final date = DateTime(
                 _displayedMonth.year,
                 _displayedMonth.month,
-                dayNumber,
+                dayNum,
               );
-
-              final isSelected =
-                  date.year == _selectedDate.year &&
-                      date.month ==
-                          _selectedDate.month &&
-                      date.day == _selectedDate.day;
-
-              final isToday = _isToday(date);
+              final selected = _isSameDay(date, _selectedDate);
+              final today = _isToday(date);
               final hasRenewal = _hasRenewal(date);
 
               return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedDate = date;
-                  });
-                },
+                onTap: () => setState(() => _selectedDate = date),
                 child: Container(
-                  margin: const EdgeInsets.all(3),
+                  margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primary
+                    gradient: selected
+                        ? const LinearGradient(
+                            colors: AppColors.heroGradient,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
                         : null,
-                    borderRadius:
-                        BorderRadius.circular(10),
-                    border: isToday && !isSelected
+                    color: selected ? null : Colors.transparent,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    border: today && !selected
                         ? Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary,
+                            color: AppColors.primary,
+                            width: 1.5,
                           )
                         : null,
                   ),
                   child: Column(
-                    mainAxisAlignment:
-                        MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        '$dayNumber',
+                        '$dayNum',
                         style: TextStyle(
-                          fontWeight: isToday ||
-                                  isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isSelected
+                          fontSize: 13,
+                          fontWeight: today || selected
+                              ? FontWeight.w800
+                              : FontWeight.w500,
+                          color: selected
                               ? Colors.white
-                              : null,
+                              : today
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       if (hasRenewal)
                         Container(
-                          width: 6,
-                          height: 6,
+                          width: 5,
+                          height: 5,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isSelected
+                            color: selected
                                 ? Colors.white
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .primary,
+                                : AppColors.primary,
                           ),
                         )
                       else
-                        const SizedBox(
-                          height: 6,
-                        ),
+                        const SizedBox(height: 5),
                     ],
                   ),
                 ),
@@ -336,76 +229,103 @@ class _RenewalCalendarScreenState
     );
   }
 
-  bool _isToday(DateTime date) {
-    final now = DateTime.now();
-
-    return date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
+  Widget _navBtn(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: AppColors.primarySoft,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 20, color: AppColors.primary),
+        ),
+      ),
+    );
   }
 
+  // ===== Selected date detail =====
   Widget _buildSelectedDate() {
-    final renewals =
-        _subscriptionsForDate(_selectedDate);
+    final subs = _subsForDate(_selectedDate);
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment:
-              MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Selected Date',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            const Expanded(
+              child: Text(
+                'Renewals',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: AppColors.textPrimary,
+                ),
               ),
             ),
-            TextButton(
+            TextButton.icon(
               onPressed: _goToToday,
-              child: const Text('Today'),
+              icon: const Icon(Icons.today_rounded, size: 16),
+              label: const Text('Today'),
             ),
           ],
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 2),
 
         Text(
           _formatDate(_selectedDate),
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 14,
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
           ),
         ),
 
         const SizedBox(height: 12),
 
-        if (renewals.isEmpty)
+        if (subs.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color: AppColors.primary.withOpacity(0.08),
               ),
             ),
             child: Column(
               children: [
-                Icon(
-                  Icons.event_available_outlined,
-                  size: 40,
-                  color: Colors.grey.shade500,
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primarySoft,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.event_available_rounded,
+                    size: 26,
+                    color: AppColors.primary,
+                  ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 const Text(
                   'No renewals on this date',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pick another day to see its renewals.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -413,91 +333,106 @@ class _RenewalCalendarScreenState
           )
         else
           Container(
-            width: double.infinity,
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color: AppColors.primary.withOpacity(0.08),
               ),
             ),
             child: Column(
-              children: renewals.map((subscription) {
-                final rate =
-                    widget.rates[
-                            subscription.currency] ??
-                        1.0;
+              children: [
+                ...subs.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final s = entry.value;
+                  final rate = widget.rates[s.currency] ?? 1.0;
+                  final converted = s.price * rate;
+                  final amount = CurrencyUtils.format(
+                    converted,
+                    widget.preferredCurrency,
+                  );
+                  final planText = s.planName.isNotEmpty
+                      ? s.planName
+                      : s.category;
 
-                final convertedPrice =
-                    subscription.price * rate;
-
-                final amount =
-                    CurrencyUtils.format(
-                  convertedPrice,
-                  widget.preferredCurrency,
-                );
-
-                final planText =
-                    subscription.planName.isNotEmpty
-                        ? subscription.planName
-                        : subscription.category;
-
-                return ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  leading: CircleAvatar(
-                    child: Text(
-                      subscription.name.isEmpty
-                          ? '?'
-                          : subscription.name[0]
-                              .toUpperCase(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    subscription.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: Text(
-                    '$planText • ${subscription.billingCycle}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  trailing: Column(
-                    mainAxisAlignment:
-                        MainAxisAlignment.center,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.end,
+                  return Column(
                     children: [
-                      Text(
-                        amount,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: AppColors.heroGradient,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.md),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            s.name.isEmpty
+                                ? '?'
+                                : s.name[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          s.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '$planText • ${s.billingCycle}',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              amount,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              _renewalLabel(s.renewalDate),
+                              style: const TextStyle(
+                                color: AppColors.textTertiary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        _renewalLabel(
-                          subscription.renewalDate,
+                      if (i < subs.length - 1)
+                        const Divider(
+                          height: 1,
+                          indent: 16,
+                          endIndent: 16,
                         ),
-                        style: TextStyle(
-                          color: Colors.grey.shade500,
-                          fontSize: 11,
-                        ),
-                      ),
                     ],
-                  ),
-                );
-              }).toList(),
+                  );
+                }),
+              ],
             ),
           ),
       ],
@@ -507,27 +442,19 @@ class _RenewalCalendarScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Renewal Calendar'),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            16,
-            12,
-            16,
-            32,
-          ),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              _buildCalendar(),
-
-              const SizedBox(height: 28),
-
-              _buildSelectedDate(),
-            ],
+      appBar: AppBar(title: const Text('Renewal Calendar')),
+      body: AppBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCalendar(),
+                const SizedBox(height: 24),
+                _buildSelectedDate(),
+              ],
+            ),
           ),
         ),
       ),
@@ -535,10 +462,9 @@ class _RenewalCalendarScreenState
   }
 }
 
-class _WeekdayLabel extends StatelessWidget {
+class _Weekday extends StatelessWidget {
   final String text;
-
-  const _WeekdayLabel(this.text);
+  const _Weekday(this.text);
 
   @override
   Widget build(BuildContext context) {
@@ -546,10 +472,11 @@ class _WeekdayLabel extends StatelessWidget {
       child: Center(
         child: Text(
           text,
-          style: TextStyle(
-            color: Colors.grey.shade600,
+          style: const TextStyle(
+            color: AppColors.textTertiary,
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
           ),
         ),
       ),

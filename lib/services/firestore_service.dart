@@ -7,8 +7,7 @@ class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  CollectionReference<Map<String, dynamic>>
-      get _subscriptionCollection {
+  CollectionReference<Map<String, dynamic>> get _subscriptionCollection {
     final user = _auth.currentUser;
 
     if (user == null) {
@@ -21,33 +20,26 @@ class FirestoreService {
         .collection('subscriptions');
   }
 
-  Future<void> addSubscription(
-    Subscription subscription,
-  ) async {
-    await _subscriptionCollection.add(
-      subscription.toMap(),
-    );
+  Future<void> addSubscription(Subscription subscription) async {
+    await _subscriptionCollection.add(subscription.toMap());
   }
 
   Future<void> updateSubscription(
     String documentId,
     Subscription subscription,
   ) async {
-    await _subscriptionCollection
-        .doc(documentId)
-        .update(subscription.toMap());
+    await _subscriptionCollection.doc(documentId).update(subscription.toMap());
   }
 
-  Future<void> deleteSubscription(
-    String documentId,
-  ) async {
-    await _subscriptionCollection
-        .doc(documentId)
-        .delete();
+  Future<void> deleteSubscription(String documentId) async {
+    await _subscriptionCollection.doc(documentId).delete();
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>>
-      getSubscriptions() {
+  Future<void> updateStatus(String documentId, String status) async {
+    await _subscriptionCollection.doc(documentId).update({'status': status});
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> getSubscriptions() {
     return _subscriptionCollection.snapshots();
   }
 }
