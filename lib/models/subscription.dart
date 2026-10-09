@@ -7,6 +7,7 @@ class Subscription {
   DateTime startDate;
   DateTime renewalDate;
   String category;
+
   String logoUrl;
   String? cardColor;
   String status; // 'active' | 'cancelled' | 'archived'
@@ -36,6 +37,8 @@ class Subscription {
         return price * 52 / 12;
       case 'Monthly':
         return price;
+      case 'Semi-Annual':
+        return price / 6;
       case 'Yearly':
         return price / 12;
       default:
@@ -49,6 +52,8 @@ class Subscription {
         return price * 52;
       case 'Monthly':
         return price * 12;
+      case 'Semi-Annual':
+        return price * 2;
       case 'Yearly':
         return price;
       default:
@@ -86,11 +91,10 @@ class Subscription {
       category: map['category'] ?? 'Other',
       logoUrl: map['logoUrl'] ?? '',
       cardColor: map['cardColor'],
-      status: map['status'] ?? 'active', // existing docs default to active
+      status: map['status'] ?? 'active',
     );
   }
 
-  // Convenience: copy with new status
   Subscription copyWithStatus(String newStatus) {
     return Subscription(
       name: name,

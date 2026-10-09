@@ -8,25 +8,27 @@ import '../widgets/app_background.dart';
 class AddSubscriptionScreen extends StatefulWidget {
   final String? initialName;
   final String? initialPlanName;
-  final double? initialPrice;
   final String? initialCurrency;
-  final String? initialBillingCycle;
   final String? initialCategory;
   final String? initialLogoUrl;
   final String? initialCardColor;
   final Subscription? initialSubscription;
 
+  /// For popular subs: map of cycle → price.
+  /// When provided, the cycle dropdown is filtered to these cycles,
+  /// and the price auto-fills when the cycle changes.
+  final Map<String, double>? priceByCycle;
+
   const AddSubscriptionScreen({
     super.key,
     this.initialName,
     this.initialPlanName,
-    this.initialPrice,
     this.initialCurrency,
-    this.initialBillingCycle,
     this.initialCategory,
     this.initialLogoUrl,
     this.initialCardColor,
     this.initialSubscription,
+    this.priceByCycle,
   });
 
   @override
@@ -46,36 +48,89 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
   String? _cardColor;
   DateTime _startDate = DateTime.now();
 
-  final _colors = const [
-    Colors.blue, Colors.purple, Colors.green, Colors.orange,
-    Colors.teal, Colors.indigo, Colors.pink, Colors.cyan,
-    Colors.deepOrange, Colors.deepPurple, Colors.red, Colors.amber,
+  /// Master list — includes Semi-Annual now.
+  static const List<String> _allCycles = [
+    'Weekly',
+    'Monthly',
+    'Semi-Annual',
+    'Yearly',
   ];
 
-  DateTime get _renewalDate {
-    if (_billingCycle == 'Weekly') {
-      return _startDate.add(const Duration(days: 7));
+  /// Display order used when a plan's available cycles are sorted.
+  static const List<String> _cycleDisplayOrder = [
+    'Weekly',
+    'Monthly',
+    'Semi-Annual',
+    'Yearly',
+  ];
+
+  final _colors = const [
+    Color(0xFF6C4CE0),
+    Color(0xFFEC4899),
+    Color(0xFF0EA5E9),
+    Color(0xFF16A34A),
+    Color(0xFFF59E0B),
+    Color(0xFF8B5CF6),
+    Color(0xFFEF4444),
+    Color(0xFF06B6D4),
+    Color(0xFF14B8A6),
+    Color(0xFFF97316),
+    Color(0xFF6366F1),
+    Color(0xFF84CC16),
+  ];
+
+  /// The cycles the user is allowed to pick.
+  /// For catalog plans: only the cycles present in priceByCycle.
+  /// For custom subs: everything in _allCycles.
+  List<String> get _allowedCycles {
+    if (widget.priceByCycle != null && widget.priceByCycle!.isNotEmpty) {
+      return _cycleDisplayOrder
+          .where((c) => widget.priceByCycle!.containsKey(c))
+          .toList();
     }
-    if (_billingCycle == 'Yearly') {
-      final y = _startDate.year + 1;
-      final lastDay = DateTime(y, _startDate.month + 1, 0).day;
+    return List.from(_allCycles);
+  }
+
+  DateTime get _renewalDate {
+    final m = _startDate.month;
+    final y = _startDate.year;
+
+    // Add N months to the start date, clamping the day to the last
+    // valid day of the target month.
+    DateTime addMonths(DateTime date, int months) {
+      final targetMonth = date.month + months;
+      final targetYear = date.year + ((targetMonth - 1) ~/ 12);
+      final normalizedMonth = ((targetMonth - 1) % 12) + 1;
+      final lastDay = DateTime(targetYear, normalizedMonth + 1, 0).day;
       return DateTime(
-        y,
-        _startDate.month,
-        _startDate.day > lastDay ? lastDay : _startDate.day,
+        targetYear,
+        normalizedMonth,
+        date.day > lastDay ? lastDay : date.day,
       );
     }
-    final m = _startDate.month == 12 ? 1 : _startDate.month + 1;
-    final y = _startDate.month == 12 ? _startDate.year + 1 : _startDate.year;
-    final lastDay = DateTime(y, m + 1, 0).day;
-    return DateTime(
-      y,
-      m,
-      _startDate.day > lastDay ? lastDay : _startDate.day,
-    );
+
+    switch (_billingCycle) {
+      case 'Weekly':
+        return _startDate.add(const Duration(days: 7));
+      case 'Monthly':
+        return addMonths(_startDate, 1);
+      case 'Semi-Annual':
+        return addMonths(_startDate, 6);
+      case 'Yearly':
+        return addMonths(_startDate, 12);
+      default:
+        return addMonths(_startDate, 1);
+    }
   }
 
   bool get _isEditing => widget.initialSubscription != null;
+
+  bool get _isFromCatalog {
+    final existing = widget.initialSubscription;
+    if (existing != null && existing.logoUrl.isNotEmpty) return true;
+    if (_logoUrl.isNotEmpty) return true;
+    return false;
+  }
 
   @override
   void initState() {
@@ -93,15 +148,25 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
       _startDate = existing.startDate;
     } else {
       _nameController.text = widget.initialName ?? '';
-      if (widget.initialPrice != null) {
-        _priceController.text = widget.initialPrice!.toStringAsFixed(2);
-      }
       _planName = widget.initialPlanName ?? '';
       _currency = widget.initialCurrency ?? 'PHP';
-      _billingCycle = widget.initialBillingCycle ?? 'Monthly';
       _category = widget.initialCategory ?? 'Other';
       _logoUrl = widget.initialLogoUrl ?? '';
       _cardColor = widget.initialCardColor;
+
+      if (widget.priceByCycle != null && widget.priceByCycle!.isNotEmpty) {
+        final allowed = _allowedCycles;
+        if (allowed.contains('Monthly')) {
+          _billingCycle = 'Monthly';
+        } else if (allowed.isNotEmpty) {
+          _billingCycle = allowed.first;
+        }
+
+        final price = widget.priceByCycle![_billingCycle];
+        if (price != null) {
+          _priceController.text = price.toStringAsFixed(2);
+        }
+      }
     }
   }
 
@@ -110,6 +175,19 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
     _nameController.dispose();
     _priceController.dispose();
     super.dispose();
+  }
+
+  /// When the cycle changes, swap the price if a catalog price exists.
+  void _onCycleChanged(String newCycle) {
+    setState(() {
+      _billingCycle = newCycle;
+
+      if (widget.priceByCycle != null &&
+          widget.priceByCycle!.containsKey(newCycle)) {
+        _priceController.text =
+            widget.priceByCycle![newCycle]!.toStringAsFixed(2);
+      }
+    });
   }
 
   Future<void> _selectStartDate() async {
@@ -139,7 +217,7 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
         renewalDate: _renewalDate,
         category: _category,
         logoUrl: _logoUrl,
-        cardColor: _cardColor,
+        cardColor: _isFromCatalog ? null : _cardColor,
       ),
     );
   }
@@ -150,8 +228,12 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
 
   Color _autoColor() {
     const c = [
-      Color(0xFF6C4CE0), Color(0xFFEC4899), Color(0xFF0EA5E9),
-      Color(0xFF16A34A), Color(0xFFF59E0B), Color(0xFF8B5CF6),
+      Color(0xFF6C4CE0),
+      Color(0xFFEC4899),
+      Color(0xFF0EA5E9),
+      Color(0xFF16A34A),
+      Color(0xFFF59E0B),
+      Color(0xFF8B5CF6),
     ];
     int hash = 0;
     for (final x in _nameController.text.codeUnits) {
@@ -160,10 +242,17 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
     return c[hash.abs() % c.length];
   }
 
+  bool get _isCustomColor => _cardColor != null;
+
   Color _previewColor() {
+    if (_isFromCatalog) {
+      return const Color(0xFF6C4CE0);
+    }
     if (_cardColor == null) return _autoColor();
     try {
-      return Color(int.parse('FF${_cardColor!.replaceAll('#', '')}', radix: 16));
+      return Color(
+        int.parse('FF${_cardColor!.replaceAll('#', '')}', radix: 16),
+      );
     } catch (_) {
       return _autoColor();
     }
@@ -172,22 +261,77 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
   String _colorHex(Color c) =>
       c.toARGB32().toRadixString(16).substring(2).toUpperCase();
 
-  Widget _sectionLabel(String text) => Padding(
+  Widget _sectionLabel(BuildContext context, String text) => Padding(
         padding: const EdgeInsets.only(left: 4, bottom: 10, top: 24),
         child: Text(
           text.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.8,
-            color: AppColors.textTertiary,
+          style: AppType.microLabel.copyWith(
+            color: context.colors.textTertiary,
           ),
         ),
       );
 
+  Widget _lockedField(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required String value,
+  }) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: colors.textTertiary),
+        filled: true,
+        fillColor: isDark
+            ? colors.surfaceElevated.withOpacity(0.5)
+            : colors.bg,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: colors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: colors.border),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: colors.textSecondary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 14,
+            color: colors.textTertiary,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final preview = _previewColor();
+    final allowed = _allowedCycles;
+    final cycleLocked = allowed.length == 1;
 
     return Scaffold(
       appBar: AppBar(
@@ -200,7 +344,6 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                // Plan chip (only when from catalog)
                 if (_planName.isNotEmpty) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -208,8 +351,10 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: AppColors.heroGradient,
+                      gradient: LinearGradient(
+                        colors: isDark
+                            ? AppColors.heroGradientDark
+                            : AppColors.heroGradient,
                       ),
                       borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
@@ -237,12 +382,14 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                   const SizedBox(height: 12),
                 ],
 
-                _sectionLabel('Basic Information'),
+                _sectionLabel(context, 'Basic Information'),
 
                 TextFormField(
                   controller: _nameController,
                   onChanged: (_) {
-                    if (_cardColor == null) setState(() {});
+                    if (!_isFromCatalog && _cardColor == null) {
+                      setState(() {});
+                    }
                   },
                   decoration: const InputDecoration(
                     labelText: 'Subscription Name',
@@ -272,7 +419,7 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                   },
                 ),
 
-                _sectionLabel('Billing'),
+                _sectionLabel(context, 'Billing'),
 
                 Row(
                   children: [
@@ -280,6 +427,7 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                       child: DropdownButtonFormField<String>(
                         value: _currency,
                         isExpanded: true,
+                        dropdownColor: colors.surface,
                         decoration: const InputDecoration(
                           labelText: 'Currency',
                           prefixIcon: Icon(Icons.currency_exchange),
@@ -301,22 +449,36 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _billingCycle,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Cycle',
-                          prefixIcon: Icon(Icons.repeat_outlined),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-                          DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
-                          DropdownMenuItem(value: 'Yearly', child: Text('Yearly')),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) setState(() => _billingCycle = v);
-                        },
-                      ),
+                      child: cycleLocked
+                          ? _lockedField(
+                              context,
+                              label: 'Cycle',
+                              icon: Icons.repeat_outlined,
+                              value: allowed.first,
+                            )
+                          : DropdownButtonFormField<String>(
+                              value: allowed.contains(_billingCycle)
+                                  ? _billingCycle
+                                  : allowed.first,
+                              isExpanded: true,
+                              dropdownColor: colors.surface,
+                              decoration: const InputDecoration(
+                                labelText: 'Cycle',
+                                prefixIcon: Icon(Icons.repeat_outlined),
+                              ),
+                              items: allowed.map((c) {
+                                return DropdownMenuItem(
+                                  value: c,
+                                  child: Text(
+                                    c,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (v) {
+                                if (v != null) _onCycleChanged(v);
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -325,18 +487,34 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
 
                 DropdownButtonFormField<String>(
                   value: _category,
+                  dropdownColor: colors.surface,
                   decoration: const InputDecoration(
                     labelText: 'Category',
                     prefixIcon: Icon(Icons.category_outlined),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'Entertainment', child: Text('Entertainment')),
+                    DropdownMenuItem(
+                      value: 'Entertainment',
+                      child: Text('Entertainment'),
+                    ),
                     DropdownMenuItem(value: 'Music', child: Text('Music')),
                     DropdownMenuItem(value: 'Gaming', child: Text('Gaming')),
-                    DropdownMenuItem(value: 'Productivity', child: Text('Productivity')),
-                    DropdownMenuItem(value: 'Education', child: Text('Education')),
-                    DropdownMenuItem(value: 'Cloud Storage', child: Text('Cloud Storage')),
-                    DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
+                    DropdownMenuItem(
+                      value: 'Productivity',
+                      child: Text('Productivity'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Education',
+                      child: Text('Education'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Cloud Storage',
+                      child: Text('Cloud Storage'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Shopping',
+                      child: Text('Shopping'),
+                    ),
                     DropdownMenuItem(value: 'Other', child: Text('Other')),
                   ],
                   onChanged: (v) {
@@ -344,7 +522,7 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                   },
                 ),
 
-                _sectionLabel('Schedule'),
+                _sectionLabel(context, 'Schedule'),
 
                 InkWell(
                   onTap: _selectStartDate,
@@ -354,197 +532,192 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
                       labelText: 'Start Date',
                       prefixIcon: Icon(Icons.event_outlined),
                     ),
-                    child: Text(_formatDate(_startDate)),
+                    child: Text(
+                      _formatDate(_startDate),
+                      style: TextStyle(color: colors.textPrimary),
+                    ),
                   ),
                 ),
 
                 const SizedBox(height: 12),
 
                 InputDecorator(
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Next Renewal',
-                    prefixIcon: Icon(Icons.event_repeat_outlined),
+                    prefixIcon: const Icon(Icons.event_repeat_outlined),
                     enabled: false,
+                    fillColor: isDark
+                        ? colors.surfaceElevated.withOpacity(0.5)
+                        : colors.bg,
                   ),
-                  child: Text(_formatDate(_renewalDate)),
-                ),
-
-                _sectionLabel('Card Appearance'),
-
-                // Preview card
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: preview.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: preview.withOpacity(0.25)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [preview, preview.withOpacity(0.75)],
-                          ),
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                        ),
-                        alignment: Alignment.center,
-                        child: _logoUrl.isNotEmpty
-                            ? ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.md),
-                                child: Image.network(
-                                  _logoUrl,
-                                  width: 48,
-                                  height: 48,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Text(
-                                    _nameController.text.isEmpty
-                                        ? '?'
-                                        : _nameController.text[0].toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 20,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                _nameController.text.isEmpty
-                                    ? '?'
-                                    : _nameController.text[0].toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 20,
-                                ),
-                              ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _nameController.text.trim().isEmpty
-                                  ? 'Preview'
-                                  : _nameController.text.trim(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${CurrencyUtils.getSymbol(_currency)} '
-                              '${_priceController.text.isEmpty ? '0.00' : _priceController.text}'
-                              ' / ${_billingCycle.toLowerCase()}',
-                              style: TextStyle(
-                                color: Colors.grey.shade700,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    _formatDate(_renewalDate),
+                    style: TextStyle(color: colors.textSecondary),
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                if (!_isFromCatalog) ...[
+                  _sectionLabel(context, 'Card Appearance'),
 
-                _card(
-                  child: Column(
-                    children: [
-                      RadioListTile<String?>(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        value: null,
-                        groupValue: _cardColor,
-                        title: const Text(
-                          'Auto-fill color',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Let SubTrack choose automatically',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        onChanged: (_) => setState(() => _cardColor = null),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: preview.withOpacity(isDark ? 0.14 : 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      border: Border.all(
+                        color: preview.withOpacity(isDark ? 0.35 : 0.25),
                       ),
-                      const Divider(height: 1, indent: 60),
-                      RadioListTile<String?>(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        value: 'custom',
-                        groupValue: _cardColor == null ? null : 'custom',
-                        title: const Text(
-                          'Choose a color',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Use your own card color',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        onChanged: (_) {
-                          if (_cardColor == null) {
-                            setState(
-                              () => _cardColor = _colorHex(_autoColor()),
-                            );
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                if (_cardColor != null) ...[
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: _colors.map((c) {
-                      final hex = _colorHex(c);
-                      final selected = _cardColor == hex;
-                      return GestureDetector(
-                        onTap: () => setState(() => _cardColor = hex),
-                        child: Container(
-                          width: 44,
-                          height: 44,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: selected
-                                  ? AppColors.textPrimary
-                                  : Colors.transparent,
-                              width: 3,
+                            gradient: LinearGradient(
+                              colors: [
+                                preview,
+                                preview.withOpacity(0.75),
+                              ],
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.md),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _nameController.text.isEmpty
+                                ? '?'
+                                : _nameController.text[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
                             ),
                           ),
-                          child: selected
-                              ? const Icon(
-                                  Icons.check,
-                                  color: Colors.white,
-                                  size: 20,
-                                )
-                              : null,
                         ),
-                      );
-                    }).toList(),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _nameController.text.trim().isEmpty
+                                    ? 'Preview'
+                                    : _nameController.text.trim(),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  color: colors.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${CurrencyUtils.getSymbol(_currency)} '
+                                '${_priceController.text.isEmpty ? '0.00' : _priceController.text}'
+                                ' / ${_billingCycle.toLowerCase()}',
+                                style: TextStyle(
+                                  color: colors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
+                  const SizedBox(height: 14),
+
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? colors.surfaceElevated
+                          : colors.bg,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _segmentButton(
+                            context,
+                            label: 'Auto',
+                            icon: Icons.auto_awesome_rounded,
+                            selected: !_isCustomColor,
+                            onTap: () =>
+                                setState(() => _cardColor = null),
+                          ),
+                        ),
+                        Expanded(
+                          child: _segmentButton(
+                            context,
+                            label: 'Custom',
+                            icon: Icons.palette_outlined,
+                            selected: _isCustomColor,
+                            onTap: () {
+                              if (_cardColor == null) {
+                                setState(
+                                  () => _cardColor =
+                                      _colorHex(_autoColor()),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (_isCustomColor) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: _colors.map((c) {
+                        final hex = _colorHex(c);
+                        final selected = _cardColor == hex;
+                        return GestureDetector(
+                          onTap: () =>
+                              setState(() => _cardColor = hex),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: selected
+                                    ? colors.textPrimary
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                              boxShadow: selected
+                                  ? [
+                                      BoxShadow(
+                                        color: c.withOpacity(0.4),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: selected
+                                ? const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 20,
+                                  )
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ],
 
                 const SizedBox(height: 28),
@@ -573,12 +746,47 @@ class _AddSubscriptionScreenState extends State<AddSubscriptionScreen> {
     );
   }
 
-  Widget _card({required Widget child}) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.82),
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+  Widget _segmentButton(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final colors = context.colors;
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Material(
+      color: selected ? primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : colors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.1,
+                  color: selected ? Colors.white : colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
-        child: child,
-      );
+      ),
+    );
+  }
 }

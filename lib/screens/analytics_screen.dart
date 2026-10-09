@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models/subscription.dart';
@@ -36,9 +37,17 @@ class AnalyticsScreen extends StatelessWidget {
     return palette[category] ?? const Color(0xFF64748B);
   }
 
-  Widget _buildHeroCard(double monthly, double yearly) {
+  Widget _buildHeroCard(
+    BuildContext context,
+    double monthly,
+    double yearly,
+    List<MapEntry<String, double>> categories,
+    double total,
+  ) {
+    final colors = context.colors;
+    final hasData = categories.isNotEmpty && total > 0;
+
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -51,128 +60,267 @@ class AnalyticsScreen extends StatelessWidget {
           BoxShadow(
             color: AppColors.primary.withOpacity(0.3),
             blurRadius: 24,
-            offset: const Offset(0, 10),
+            offset: const Offset(0, 12),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.calendar_month_rounded,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Monthly Spending',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              CurrencyUtils.format(monthly, preferredCurrency),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 36,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Row(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.payments_rounded,
-                  color: Colors.white70,
-                  size: 14,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.calendar_month_rounded,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'MONTHLY SPEND',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  '${CurrencyUtils.format(yearly, preferredCurrency)} / year',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(height: 14),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    CurrencyUtils.format(monthly, preferredCurrency),
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1.2,
+                      height: 1.05,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.trending_up_rounded,
+                        color: Colors.white,
+                        size: 13,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${CurrencyUtils.format(yearly, preferredCurrency)} / yr',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+
+          const SizedBox(width: 16),
+
+          if (hasData)
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PieChart(
+                    PieChartData(
+                      sectionsSpace: 3,
+                      centerSpaceRadius: 30,
+                      startDegreeOffset: -90,
+                      sections: categories.map((entry) {
+                        return PieChartSectionData(
+                          color: _categoryColor(entry.key),
+                          value: entry.value,
+                          showTitle: false,
+                          radius: 18,
+                        );
+                      }).toList(),
+                    ),
+                    swapAnimationDuration:
+                        const Duration(milliseconds: 350),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${categories.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        categories.length == 1 ? 'category' : 'categories',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.pie_chart_outline_rounded,
+                color: Colors.white54,
+                size: 32,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard({
+  Widget _buildStatsBar(BuildContext context, int activeCount, double avg) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.border),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            Expanded(
+              child: _statCell(
+                context,
+                label: 'Active Subs',
+                value: '$activeCount',
+                accent: isDark ? AppColors.infoDark : AppColors.info,
+              ),
+            ),
+            Container(
+              width: 1,
+              margin: const EdgeInsets.symmetric(vertical: 14),
+              color: colors.border,
+            ),
+            Expanded(
+              child: _statCell(
+                context,
+                label: 'Avg / Month',
+                value: CurrencyUtils.format(avg, preferredCurrency),
+                accent: isDark ? AppColors.successDark : AppColors.success,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statCell(
+    BuildContext context, {
     required String label,
     required String value,
-    required IconData icon,
-    required Color color,
+    required Color accent,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
-      ),
+    final colors = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(icon, size: 18, color: color),
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    color: colors.textTertiary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
+              maxLines: 1,
+              style: TextStyle(
+                color: colors.textPrimary,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.4,
-                color: AppColors.textPrimary,
+                letterSpacing: -0.5,
+                height: 1,
               ),
             ),
           ),
@@ -181,19 +329,149 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildCategoryRow(
+    BuildContext context,
+    String category,
+    double amount,
+    double total,
+  ) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pct = total == 0 ? 0.0 : (amount / total) * 100;
+    final color = _categoryColor(category);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: colors.border),
+          boxShadow: isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(isDark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    _iconForCategory(category),
+                    size: 18,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          letterSpacing: -0.2,
+                          color: colors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${pct.toStringAsFixed(1)}% of total',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: colors.textTertiary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  CurrencyUtils.format(amount, preferredCurrency),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    letterSpacing: -0.3,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: (pct / 100).clamp(0.0, 1.0),
+                minHeight: 6,
+                backgroundColor: color.withOpacity(isDark ? 0.15 : 0.1),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForCategory(String category) {
+    const icons = {
+      'Entertainment': Icons.movie_outlined,
+      'Music': Icons.music_note_outlined,
+      'Gaming': Icons.sports_esports_outlined,
+      'Productivity': Icons.work_outline_rounded,
+      'Education': Icons.school_outlined,
+      'Cloud Storage': Icons.cloud_outlined,
+      'Shopping': Icons.shopping_bag_outlined,
+      'Other': Icons.category_outlined,
+    };
+    return icons[category] ?? Icons.category_outlined;
+  }
+
   Widget _buildHighestCard(
+    BuildContext context,
     Subscription highest,
     double highestCost,
     double monthlyTotal,
   ) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pct = monthlyTotal == 0 ? 0.0 : (highestCost / monthlyTotal) * 100;
+    final accent = _categoryColor(highest.category);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+        border: Border.all(color: colors.border),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         children: [
@@ -201,8 +479,8 @@ class AnalyticsScreen extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: AppColors.heroGradient,
+              gradient: LinearGradient(
+                colors: [accent, accent.withOpacity(0.75)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -222,39 +500,54 @@ class AnalyticsScreen extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   highest.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
                     fontSize: 15,
-                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                    color: colors.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 3),
                 Text(
                   '${CurrencyUtils.format(highestCost, preferredCurrency)} / month',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: colors.textSecondary,
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                  child: Text(
-                    '${pct.toStringAsFixed(1)}% of monthly spend',
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: (pct / 100).clamp(0.0, 1.0),
+                          minHeight: 5,
+                          backgroundColor:
+                              accent.withOpacity(isDark ? 0.18 : 0.12),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(accent),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${pct.toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -264,78 +557,9 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCategoryRow(String category, double amount, double total) {
-    final pct = total == 0 ? 0.0 : (amount / total) * 100;
-    final color = _categoryColor(category);
+  Widget _buildEmptyState(BuildContext context) {
+    final colors = context.colors;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.82),
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.primary.withOpacity(0.08)),
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    category,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                Text(
-                  CurrencyUtils.format(amount, preferredCurrency),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: (pct / 100).clamp(0.0, 1.0),
-                minHeight: 6,
-                backgroundColor: color.withOpacity(0.12),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '${pct.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -345,22 +569,22 @@ class AnalyticsScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.primarySoft,
+                color: colors.primarySoft,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.analytics_outlined,
                 size: 48,
-                color: AppColors.primary,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'No data yet',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
                 letterSpacing: -0.4,
               ),
             ),
@@ -369,7 +593,7 @@ class AnalyticsScreen extends StatelessWidget {
               'Add some active subscriptions to see your spending analytics.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
                 fontSize: 14,
                 height: 1.4,
               ),
@@ -382,16 +606,18 @@ class AnalyticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final active = subscriptions.where((s) => s.isActive).toList();
 
     if (active.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Spending Analytics')),
-        body: AppBackground(child: _buildEmptyState()),
+        body: AppBackground(child: _buildEmptyState(context)),
       );
     }
 
-    final monthlyTotal = active.fold<double>(0, (sum, s) => sum + _monthlyCost(s));
+    final monthlyTotal =
+        active.fold<double>(0, (sum, s) => sum + _monthlyCost(s));
     final yearlyTotal = monthlyTotal * 12;
     final averageMonthly = monthlyTotal / active.length;
 
@@ -422,77 +648,70 @@ class AnalyticsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeroCard(monthlyTotal, yearlyTotal),
-
-                const SizedBox(height: 16),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        label: 'Active Subs',
-                        value: '${active.length}',
-                        icon: Icons.subscriptions_rounded,
-                        color: AppColors.info,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        label: 'Avg / Month',
-                        value: CurrencyUtils.format(
-                          averageMonthly,
-                          preferredCurrency,
-                        ),
-                        icon: Icons.trending_up_rounded,
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
+                _buildHeroCard(
+                  context,
+                  monthlyTotal,
+                  yearlyTotal,
+                  sortedCategories,
+                  monthlyTotal,
                 ),
+
+                const SizedBox(height: 14),
+
+                _buildStatsBar(context, active.length, averageMonthly),
 
                 const SizedBox(height: 28),
 
-                const Text(
-                  'Highest Cost',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                _buildHighestCard(highest, highestCost, monthlyTotal),
-
-                const SizedBox(height: 28),
-
-                const Text(
+                Text(
                   'Category Breakdown',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.3,
-                    color: AppColors.textPrimary,
+                    color: colors.textPrimary,
                   ),
                 ),
 
                 const SizedBox(height: 4),
 
-                const Text(
+                Text(
                   'Where your money goes each month.',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
+                    color: colors.textSecondary,
+                    fontSize: 12.5,
                   ),
                 ),
 
                 const SizedBox(height: 14),
 
                 ...sortedCategories.map(
-                  (e) => _buildCategoryRow(e.key, e.value, monthlyTotal),
+                  (e) => _buildCategoryRow(
+                    context,
+                    e.key,
+                    e.value,
+                    monthlyTotal,
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Text(
+                  'Highest Cost',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: colors.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildHighestCard(
+                  context,
+                  highest,
+                  highestCost,
+                  monthlyTotal,
                 ),
               ],
             ),

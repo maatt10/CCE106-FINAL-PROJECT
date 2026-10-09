@@ -41,6 +41,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _lastDocs;
 
+  List<Subscription> _currentSubscriptions = [];
+
   static const List<String> _statusOptions = [
     'Active & Cancelled',
     'Active Only',
@@ -62,6 +64,25 @@ class _HomeScreenState extends State<HomeScreen> {
     'Price: Low to High',
     'Price: High to Low',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runRenewalMaintenance();
+    });
+  }
+
+  Future<void> _runRenewalMaintenance() async {
+    try {
+      final count = await _firestoreService.advanceOverdueRenewals();
+      if (count > 0) {
+        debugPrint('MAINTENANCE: advanced $count overdue renewals');
+      }
+    } catch (e) {
+      debugPrint('MAINTENANCE ERROR: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -91,32 +112,63 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  bool _isDuplicate(Subscription candidate) {
+    final name = candidate.name.trim().toLowerCase();
+    final plan = candidate.planName.trim().toLowerCase();
+
+    for (final existing in _currentSubscriptions) {
+      final existingName = existing.name.trim().toLowerCase();
+      final existingPlan = existing.planName.trim().toLowerCase();
+
+      if (existingName != name) continue;
+
+      if (plan.isNotEmpty && existingPlan.isNotEmpty) {
+        if (existingPlan == plan) return true;
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _addSubscription() async {
     final result = await Navigator.push<Subscription>(
       context,
       MaterialPageRoute(builder: (_) => const AddSubscriptionChoiceScreen()),
     );
 
-    if (result != null) {
-      try {
-        await _firestoreService.addSubscription(result);
-        if (mounted) {
-          showAppSnackBar(
-            context,
-            'Subscription added successfully',
-            kind: SnackKind.success,
-          );
-        }
-      } catch (e) {
-        debugPrint('FIRESTORE ERROR: $e');
-        if (mounted) {
-          showAppSnackBar(
-            context,
-            'Failed to save subscription',
-            kind: SnackKind.error,
-          );
-        }
-      }
+    if (result == null) return;
+
+    if (_isDuplicate(result)) {
+      if (!mounted) return;
+      final planLabel = result.planName.isNotEmpty
+          ? ' (${result.planName})'
+          : '';
+      showAppSnackBar(
+        context,
+        '${result.name}$planLabel is already in your subscriptions.',
+        kind: SnackKind.warning,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+
+    try {
+      await _firestoreService.addSubscription(result);
+      if (!mounted) return;
+      showAppSnackBar(
+        context,
+        'Subscription added successfully',
+        kind: SnackKind.success,
+      );
+    } catch (e) {
+      debugPrint('FIRESTORE ERROR: $e');
+      if (!mounted) return;
+      showAppSnackBar(
+        context,
+        'Failed to save subscription',
+        kind: SnackKind.error,
+      );
     }
   }
 
@@ -168,8 +220,9 @@ class _HomeScreenState extends State<HomeScreen> {
         '${date.year}';
   }
 
-  // ===== Filter sheet =====
   Future<void> _openFilterSheet(List<String> categories) async {
+    final colors = context.colors;
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -183,9 +236,9 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(AppRadius.xl),
                 ),
               ),
@@ -205,21 +258,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: AppColors.border,
+                        color: colors.border,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Filter Subscriptions',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
-                            color: AppColors.textPrimary,
+                            color: colors.textPrimary,
                           ),
                         ),
                       ),
@@ -234,6 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   _sheetDropdown(
+                    context,
                     label: 'Status',
                     icon: Icons.toggle_on_outlined,
                     value: _selectedStatus,
@@ -242,6 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   _sheetDropdown(
+                    context,
                     label: 'Category',
                     icon: Icons.category_outlined,
                     value: _selectedCategory,
@@ -251,6 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   _sheetDropdown(
+                    context,
                     label: 'Billing Cycle',
                     icon: Icons.repeat_outlined,
                     value: _selectedBillingCycle,
@@ -260,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   _sheetDropdown(
+                    context,
                     label: 'Sort By',
                     icon: Icons.sort,
                     value: _sortOption,
@@ -283,7 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _sheetDropdown({
+  Widget _sheetDropdown(
+    BuildContext context, {
     required String label,
     required IconData icon,
     required String value,
@@ -291,26 +349,29 @@ class _HomeScreenState extends State<HomeScreen> {
     required ValueChanged<String> onChanged,
     String Function(String)? displayFor,
   }) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DropdownButtonFormField<String>(
       value: value,
       isExpanded: true,
-      icon: const Icon(Icons.expand_more, color: AppColors.textTertiary),
+      icon: Icon(Icons.expand_more, color: colors.textTertiary),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: AppColors.primary),
+        prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
         filled: true,
-        fillColor: AppColors.bg,
+        fillColor: isDark ? colors.surfaceElevated : colors.bg,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 14,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: colors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: colors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -332,89 +393,104 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ===== Dashboard widgets =====
   Widget _buildDashboardHeader(BuildContext context, int subscriptionCount) {
+    final colors = context.colors;
     final hour = DateTime.now().hour;
     final greeting = hour < 12
-        ? 'Good morning'
+        ? 'GOOD MORNING'
         : hour < 18
-        ? 'Good afternoon'
-        : 'Good evening';
+            ? 'GOOD AFTERNOON'
+            : 'GOOD EVENING';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '$greeting 👋',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: AppColors.textSecondary,
-          ),
+          greeting,
+          style: AppType.microLabel.copyWith(color: colors.textTertiary),
         ),
-        const SizedBox(height: 4),
-        const Text(
-          'Your subscription overview',
+        const SizedBox(height: 6),
+        Text(
+          'Overview',
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 30,
             fontWeight: FontWeight.w800,
-            letterSpacing: -0.6,
-            color: AppColors.textPrimary,
+            letterSpacing: -1,
+            color: colors.textPrimary,
+            height: 1,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           subscriptionCount == 0
-              ? 'Start tracking your recurring expenses.'
-              : 'Keep your recurring expenses organized.',
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              ? 'Track your recurring expenses.'
+              : 'You\'re tracking $subscriptionCount active '
+                  '${subscriptionCount == 1 ? "subscription" : "subscriptions"}.',
+          style: AppType.secondary.copyWith(color: colors.textSecondary),
         ),
       ],
     );
   }
 
   Widget _buildSpendingInsight(
+    BuildContext context,
     List<Subscription> subscriptions,
     String preferredCurrency,
     Map<String, double> rates,
   ) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (subscriptions.isEmpty) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.82),
+          color: colors.surface,
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+          border: Border.all(color: colors.border),
+          boxShadow: isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.primarySoft,
-                borderRadius: BorderRadius.circular(AppRadius.md),
+                color: colors.primarySoft,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.insights_outlined,
-                color: AppColors.primary,
+                color: Theme.of(context).colorScheme.primary,
+                size: 18,
               ),
             ),
             const SizedBox(width: 14),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Spending Insight',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    'SPENDING INSIGHT',
+                    style: AppType.microLabel.copyWith(
+                      color: colors.textTertiary,
+                    ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Text(
-                    'Add a subscription to start seeing your spending overview.',
+                    'Add a subscription to see your top cost.',
                     style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textSecondary,
+                      color: colors.textSecondary,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -444,91 +520,139 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: AppColors.heroGradient,
+        gradient: LinearGradient(
+          colors: isDark
+              ? AppColors.heroGradientDark
+              : AppColors.heroGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.25),
-            blurRadius: 16,
+            color: AppColors.primary.withOpacity(0.28),
+            blurRadius: 18,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: const Icon(Icons.insights_rounded, color: Colors.white),
+          Row(
+            children: [
+              Icon(
+                Icons.insights_rounded,
+                color: Colors.white.withOpacity(0.85),
+                size: 13,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'TOP MONTHLY COST',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.85),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.9,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Highest Monthly Cost',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mostExpensive.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        letterSpacing: -0.4,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${mostExpensive.planName.isNotEmpty ? mostExpensive.planName : mostExpensive.category} '
+                      '• ${mostExpensive.billingCycle}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  mostExpensive.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      formatted,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.8,
+                        height: 1,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$formatted per month',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 2),
+                  Text(
+                    '/ month',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.75),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // Updated: uses the same SubscriptionCard widget as My Subscriptions.
-  // Shows active subs whose renewal is overdue OR within the next 7 days.
   Widget _buildUpcomingRenewals(
+    BuildContext context,
     List<MapEntry<String, Subscription>> activeEntries,
     String preferredCurrency,
     Map<String, double> rates,
   ) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // Filter: overdue OR within 7 days from today.
     final dueSoon = activeEntries.where((e) {
       final r = e.value.renewalDate;
       final renewalDay = DateTime(r.year, r.month, r.day);
       final diff = renewalDay.difference(today).inDays;
-      return diff <= 7; // negative = overdue, 0 = today, 1..7 = this week
+      return diff <= 7;
     }).toList();
 
-    // Sort ascending: overdue first, then earliest upcoming.
-    dueSoon.sort((a, b) => a.value.renewalDate.compareTo(b.value.renewalDate));
+    dueSoon.sort(
+      (a, b) => a.value.renewalDate.compareTo(b.value.renewalDate),
+    );
 
     final overdueCount = dueSoon
         .where((e) => e.value.renewalDate.isBefore(today))
@@ -538,43 +662,40 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text(
-              'Upcoming Renewals',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-                color: AppColors.textPrimary,
-              ),
+            Text(
+              'Due Soon',
+              style: AppType.section.copyWith(color: colors.textPrimary),
             ),
             const SizedBox(width: 8),
             if (overdueCount > 0)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
                 decoration: BoxDecoration(
-                  color: AppColors.danger.withOpacity(0.12),
+                  color: (isDark ? AppColors.dangerDark : AppColors.danger)
+                      .withOpacity(0.14),
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text(
-                  '$overdueCount overdue',
-                  style: const TextStyle(
-                    color: AppColors.danger,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                  '$overdueCount OVERDUE',
+                  style: TextStyle(
+                    color: isDark ? AppColors.dangerDark : AppColors.danger,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
                   ),
                 ),
               ),
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Renewing in the next 7 days',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-          ),
+        Text(
+          'Renewing within the next 7 days.',
+          style: AppType.secondary.copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: 12),
         if (dueSoon.isEmpty)
@@ -582,28 +703,41 @@ class _HomeScreenState extends State<HomeScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: colors.surface,
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+              border: Border.all(color: colors.border),
+              boxShadow: isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: Column(
               children: [
                 Icon(
                   Icons.event_available_outlined,
-                  size: 40,
-                  color: Colors.grey.shade400,
+                  size: 36,
+                  color: colors.textTertiary,
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Nothing due this week',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: colors.textPrimary,
+                  ),
                 ),
-                const SizedBox(height: 4),
-                const Text(
+                const SizedBox(height: 3),
+                Text(
                   'You\'re all caught up.',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12.5,
+                    color: colors.textSecondary,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -628,31 +762,42 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 36, 24, 32),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: Column(
         children: [
           Container(
-            width: 96,
-            height: 96,
+            width: 88,
+            height: 88,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: AppColors.heroGradient,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(26),
               boxShadow: [
                 BoxShadow(
                   color: AppColors.primary.withOpacity(0.35),
-                  blurRadius: 24,
+                  blurRadius: 22,
                   offset: const Offset(0, 10),
                 ),
               ],
@@ -660,17 +805,17 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Icon(
               Icons.add_card_rounded,
               color: Colors.white,
-              size: 44,
+              size: 40,
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
+          const SizedBox(height: 22),
+          Text(
             'No subscriptions yet',
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: AppColors.textPrimary,
+              letterSpacing: -0.4,
+              color: colors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -678,27 +823,10 @@ class _HomeScreenState extends State<HomeScreen> {
             'Track your recurring expenses by adding\nyour first subscription.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
+              color: colors.textSecondary,
+              fontSize: 13.5,
               height: 1.5,
             ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              _EmptyFeature(
-                icon: Icons.notifications_outlined,
-                label: 'Reminders',
-              ),
-              SizedBox(width: 20),
-              _EmptyFeature(icon: Icons.analytics_outlined, label: 'Analytics'),
-              SizedBox(width: 20),
-              _EmptyFeature(
-                icon: Icons.currency_exchange,
-                label: 'Multi-currency',
-              ),
-            ],
           ),
           const SizedBox(height: 28),
           SizedBox(
@@ -729,8 +857,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final s = entry.value;
       final query = _searchQuery.trim().toLowerCase();
 
-      final matchesSearch =
-          query.isEmpty ||
+      final matchesSearch = query.isEmpty ||
           s.name.toLowerCase().contains(query) ||
           s.planName.toLowerCase().contains(query) ||
           s.category.toLowerCase().contains(query);
@@ -738,8 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final matchesCategory =
           _selectedCategory == 'All' || s.category == _selectedCategory;
 
-      final matchesBilling =
-          _selectedBillingCycle == 'All' ||
+      final matchesBilling = _selectedBillingCycle == 'All' ||
           s.billingCycle == _selectedBillingCycle;
 
       final matchesStatus = switch (_selectedStatus) {
@@ -758,10 +884,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     switch (_sortOption) {
       case 'Name A-Z':
-        filtered.sort(
-          (a, b) =>
-              a.value.name.toLowerCase().compareTo(b.value.name.toLowerCase()),
-        );
+        filtered.sort((a, b) =>
+            a.value.name.toLowerCase().compareTo(b.value.name.toLowerCase()));
         break;
       case 'Price: Low to High':
         filtered.sort((a, b) => a.value.price.compareTo(b.value.price));
@@ -771,31 +895,33 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case 'Renewal Date':
       default:
-        filtered.sort(
-          (a, b) => a.value.renewalDate.compareTo(b.value.renewalDate),
-        );
+        filtered
+            .sort((a, b) => a.value.renewalDate.compareTo(b.value.renewalDate));
     }
 
     return filtered;
   }
 
-  Widget _filterButton() {
+  Widget _filterButton(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isActive = _activeFilterCount > 0;
 
     return Material(
-      color: isActive ? AppColors.primary : Colors.white.withOpacity(0.82),
+      color: isActive
+          ? Theme.of(context).colorScheme.primary
+          : colors.surface,
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: () {
           final docs = _lastDocs ?? [];
-          final categories =
-              docs
-                  .map((doc) => Subscription.fromMap(doc.data()).category)
-                  .where((c) => c.isNotEmpty)
-                  .toSet()
-                  .toList()
-                ..sort();
+          final categories = docs
+              .map((doc) => Subscription.fromMap(doc.data()).category)
+              .where((c) => c.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
           _openFilterSheet(categories);
         },
         child: Container(
@@ -805,8 +931,8 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: isActive
-                  ? AppColors.primary
-                  : AppColors.primary.withOpacity(0.12),
+                  ? Theme.of(context).colorScheme.primary
+                  : colors.border,
             ),
           ),
           alignment: Alignment.center,
@@ -815,7 +941,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(
                 Icons.tune_rounded,
-                color: isActive ? Colors.white : AppColors.primary,
+                color: isActive
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.primary,
                 size: 22,
               ),
               if (isActive)
@@ -827,14 +955,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       horizontal: 5,
                       vertical: 1,
                     ),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
+                    decoration: BoxDecoration(
+                      color: isDark ? colors.surfaceElevated : Colors.white,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       '$_activeFilterCount',
-                      style: const TextStyle(
-                        color: AppColors.primary,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                       ),
@@ -848,24 +976,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _activeFilterChip({
+  Widget _activeFilterChip(
+    BuildContext context, {
     required String label,
     required VoidCallback onRemove,
   }) {
+    final colors = context.colors;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
       decoration: BoxDecoration(
-        color: AppColors.primarySoft,
+        color: colors.primarySoft,
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.primary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -873,7 +1006,11 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onRemove,
-            child: const Icon(Icons.close, size: 14, color: AppColors.primary),
+            child: Icon(
+              Icons.close,
+              size: 14,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ],
       ),
@@ -881,11 +1018,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSubscriptionManagement(
+    BuildContext context,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     Map<String, double> rates,
     String preferredCurrency,
   ) {
     _lastDocs = docs;
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final filteredEntries = _buildFilteredSubscriptions(docs);
 
@@ -894,23 +1034,19 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text(
-              'My Subscriptions',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-                color: AppColors.textPrimary,
-              ),
+            Text(
+              'Subscriptions',
+              style: AppType.section.copyWith(color: colors.textPrimary),
             ),
             Text(
               '${filteredEntries.length}'
               '${_hasFilters ? ' of ' : ' total'}'
               '${_hasFilters ? docs.length : ''}',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -943,7 +1079,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            _filterButton(),
+            _filterButton(context),
           ],
         ),
         if (_hasFilters && _activeFilterCount > 0) ...[
@@ -954,54 +1090,78 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               if (_selectedStatus != 'Active & Cancelled')
                 _activeFilterChip(
+                  context,
                   label: _selectedStatus,
-                  onRemove: () =>
-                      setState(() => _selectedStatus = 'Active & Cancelled'),
+                  onRemove: () => setState(
+                    () => _selectedStatus = 'Active & Cancelled',
+                  ),
                 ),
               if (_selectedCategory != 'All')
                 _activeFilterChip(
+                  context,
                   label: _selectedCategory,
                   onRemove: () => setState(() => _selectedCategory = 'All'),
                 ),
               if (_selectedBillingCycle != 'All')
                 _activeFilterChip(
+                  context,
                   label: _selectedBillingCycle,
-                  onRemove: () => setState(() => _selectedBillingCycle = 'All'),
+                  onRemove: () =>
+                      setState(() => _selectedBillingCycle = 'All'),
                 ),
               if (_sortOption != 'Renewal Date')
                 _activeFilterChip(
+                  context,
                   label: 'Sort: $_sortOption',
-                  onRemove: () => setState(() => _sortOption = 'Renewal Date'),
+                  onRemove: () =>
+                      setState(() => _sortOption = 'Renewal Date'),
                 ),
             ],
           ),
         ],
         const SizedBox(height: 14),
         if (docs.isEmpty)
-          _buildEmptyState()
+          _buildEmptyState(context)
         else if (filteredEntries.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: colors.surface,
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+              border: Border.all(color: colors.border),
+              boxShadow: isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: Column(
               children: [
-                Icon(Icons.search_off, size: 42, color: Colors.grey.shade400),
+                Icon(
+                  Icons.search_off,
+                  size: 42,
+                  color: colors.textTertiary,
+                ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'No matching subscriptions',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: colors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Try changing your search or filters.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                     fontSize: 13,
                   ),
                 ),
@@ -1031,7 +1191,38 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SubTrack'),
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            // Small logo — purple tile
+            Container(
+              width: 34,
+              height: 34,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: AppColors.heroGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Image.asset(
+                'assets/icon/app_icon.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text('SubTrack'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -1064,19 +1255,17 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             final docs = snapshot.data?.docs ?? [];
-            final subscriptions = docs
-                .map((doc) => Subscription.fromMap(doc.data()))
-                .toList();
-            final activeSubscriptions = subscriptions
-                .where((s) => s.isActive)
-                .toList();
+            final subscriptions =
+                docs.map((doc) => Subscription.fromMap(doc.data())).toList();
 
-            // Build MapEntry list of only active subs (with doc IDs)
-            // so we can reuse SubscriptionCard in both sections.
+            _currentSubscriptions = subscriptions;
+
+            final activeSubscriptions =
+                subscriptions.where((s) => s.isActive).toList();
+
             final activeEntries = docs
-                .map(
-                  (doc) => MapEntry(doc.id, Subscription.fromMap(doc.data())),
-                )
+                .map((doc) =>
+                    MapEntry(doc.id, Subscription.fromMap(doc.data())))
                 .where((e) => e.value.isActive)
                 .toList();
 
@@ -1097,7 +1286,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 final preferredCurrency = currencySnapshot.data ?? 'PHP';
 
                 return FutureBuilder<Map<String, double>>(
-                  future: _getExchangeRates(subscriptions, preferredCurrency),
+                  future:
+                      _getExchangeRates(subscriptions, preferredCurrency),
                   builder: (context, rateSnapshot) {
                     if (rateSnapshot.connectionState ==
                         ConnectionState.waiting) {
@@ -1112,7 +1302,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     final rates = rateSnapshot.data ?? {};
 
-                    double getRate(Subscription s) => rates[s.currency] ?? 1.0;
+                    double getRate(Subscription s) =>
+                        rates[s.currency] ?? 1.0;
 
                     final monthlyTotal = activeSubscriptions.fold<double>(
                       0,
@@ -1126,7 +1317,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     return SafeArea(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 12, 16, 100),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1166,76 +1358,98 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 12),
                             SummaryCard(
-                              title: 'Active Subscriptions',
+                              title: 'Active',
                               value: '${activeSubscriptions.length}',
                               subtitle: activeSubscriptions.isEmpty
                                   ? 'Add your first one to begin'
-                                  : 'You\'re tracking ${activeSubscriptions.length} services',
+                                  : '${activeSubscriptions.length == 1 ? "subscription" : "subscriptions"} tracked',
                               icon: Icons.subscriptions_rounded,
                             ),
                             const SizedBox(height: 20),
                             _buildSpendingInsight(
+                              context,
                               activeSubscriptions,
                               preferredCurrency,
                               rates,
                             ),
                             const SizedBox(height: 24),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: activeSubscriptions.isEmpty
-                                    ? null
-                                    : () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                RenewalCalendarScreen(
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: activeSubscriptions.isEmpty
+                                        ? null
+                                        : () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    RenewalCalendarScreen(
                                                   subscriptions:
                                                       activeSubscriptions,
                                                   preferredCurrency:
                                                       preferredCurrency,
                                                   rates: rates,
                                                 ),
-                                          ),
-                                        );
-                                      },
-                                icon: const Icon(Icons.calendar_month_outlined),
-                                label: const Text('View Renewal Calendar'),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed: activeSubscriptions.isEmpty
-                                    ? null
-                                    : () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => AnalyticsScreen(
-                                              subscriptions:
-                                                  activeSubscriptions,
-                                              preferredCurrency:
-                                                  preferredCurrency,
-                                              rates: rates,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                icon: const Icon(Icons.analytics_outlined),
-                                label: const Text('View Spending Analytics'),
-                              ),
+                                              ),
+                                            );
+                                          },
+                                    icon: const Icon(
+                                      Icons.calendar_month_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Calendar'),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: activeSubscriptions.isEmpty
+                                        ? null
+                                        : () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    AnalyticsScreen(
+                                                  subscriptions:
+                                                      activeSubscriptions,
+                                                  preferredCurrency:
+                                                      preferredCurrency,
+                                                  rates: rates,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                    icon: const Icon(
+                                      Icons.analytics_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Analytics'),
+                                    style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 28),
                             _buildSubscriptionManagement(
+                              context,
                               docs,
                               rates,
                               preferredCurrency,
                             ),
                             const SizedBox(height: 32),
                             _buildUpcomingRenewals(
+                              context,
                               activeEntries,
                               preferredCurrency,
                               rates,
@@ -1256,38 +1470,6 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Add Subscription'),
       ),
-    );
-  }
-}
-
-class _EmptyFeature extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _EmptyFeature({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.primarySoft,
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-          ),
-          child: Icon(icon, size: 18, color: AppColors.primary),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
     );
   }
 }

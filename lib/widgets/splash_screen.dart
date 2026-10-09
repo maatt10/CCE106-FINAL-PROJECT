@@ -70,34 +70,38 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Logo — bigger
                       Container(
-                        width: 96,
-                        height: 96,
+                        width: 180,
+                        height: 180,
+                        padding: const EdgeInsets.all(22),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.subscriptions_rounded,
                           color: Colors.white,
-                          size: 46,
+                          borderRadius: BorderRadius.circular(40),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.22),
+                              blurRadius: 36,
+                              offset: const Offset(0, 16),
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/icon/app_icon.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 28),
                       const Text(
                         'SubTrack',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 32,
+                          fontSize: 34,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: -0.8,
+                          letterSpacing: -0.9,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         'Track every subscription, effortlessly.',
                         style: TextStyle(
@@ -106,10 +110,10 @@ class _SplashScreenState extends State<SplashScreen>
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 44),
                       SizedBox(
-                        width: 22,
-                        height: 22,
+                        width: 24,
+                        height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           valueColor: AlwaysStoppedAnimation<Color>(

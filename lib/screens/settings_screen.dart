@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/theme_service.dart';
 import '../services/user_settings_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/currency_utils.dart';
@@ -16,9 +17,11 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settingsService = UserSettingsService();
+  final _themeService = ThemeService();
   final _auth = FirebaseAuth.instance;
 
   String _preferredCurrency = 'PHP';
+  bool _darkMode = false;
   bool _isLoading = true;
   bool _isSavingCurrency = false;
 
@@ -34,10 +37,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     try {
-      final currency = await _settingsService.getPreferredCurrency();
+      final results = await Future.wait([
+        _settingsService.getPreferredCurrency(),
+        _themeService.getDarkMode(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _preferredCurrency = currency;
+        _preferredCurrency = results[0] as String;
+        _darkMode = results[1] as bool;
         _isLoading = false;
       });
     } catch (_) {
@@ -70,6 +77,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } finally {
       if (mounted) setState(() => _isSavingCurrency = false);
+    }
+  }
+
+  Future<void> _toggleDarkMode(bool value) async {
+    setState(() => _darkMode = value);
+    try {
+      await _themeService.setDarkMode(value);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _darkMode = !value);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save theme preference.')),
+      );
     }
   }
 
@@ -106,42 +126,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 10, top: 8),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-          color: AppColors.textTertiary,
+  Widget _sectionHeader(String title) => Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 10, top: 8),
+        child: Text(
+          title.toUpperCase(),
+          style: AppType.microLabel.copyWith(
+            color: context.colors.textTertiary,
+          ),
         ),
-      ),
-    );
-  }
+      );
 
   Widget _groupCard({required List<Widget> children}) {
+    final colors = context.colors;
     final spaced = <Widget>[];
     for (var i = 0; i < children.length; i++) {
       spaced.add(children[i]);
       if (i < children.length - 1) {
-        spaced.add(const Divider(height: 1, indent: 60));
+        spaced.add(Divider(height: 1, color: colors.border));
       }
     }
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+        boxShadow: Theme.of(context).brightness == Brightness.dark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(children: spaced),
     );
   }
 
+  TextStyle _titleStyle(BuildContext context) => TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: context.colors.textPrimary,
+      );
+
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
+    final colors = context.colors;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -156,16 +187,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _groupCard(
                       children: [
                         ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
                           leading: Container(
-                            width: 40,
-                            height: 40,
+                            width: 42,
+                            height: 42,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                 colors: AppColors.heroGradient,
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
-                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.sm),
                             ),
                             child: const Icon(
                               Icons.person_rounded,
@@ -173,22 +209,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               size: 22,
                             ),
                           ),
-                          title: const Text(
-                            'Signed in as',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w500,
+                          title: Text(
+                            'SIGNED IN AS',
+                            style: AppType.microLabel.copyWith(
+                              color: colors.textSecondary,
                             ),
                           ),
-                          subtitle: Text(
-                            user?.email ?? 'Unknown account',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              user?.email ?? 'Unknown account',
+                              style: _titleStyle(context),
                             ),
                           ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    _sectionHeader('Appearance'),
+                    _groupCard(
+                      children: [
+                        SwitchListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          secondary: Icon(
+                            _darkMode
+                                ? Icons.dark_mode_rounded
+                                : Icons.light_mode_rounded,
+                            color: AppColors.primaryLight,
+                          ),
+                          title: Text(
+                            'Dark Mode',
+                            style: _titleStyle(context),
+                          ),
+                          subtitle: const Text(
+                            'Use a darker theme at night',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          value: _darkMode,
+                          onChanged: _toggleDarkMode,
                         ),
                       ],
                     ),
@@ -199,16 +262,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _groupCard(
                       children: [
                         ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
                           leading: const Icon(
                             Icons.currency_exchange_rounded,
-                            color: AppColors.primary,
+                            color: AppColors.primaryLight,
                           ),
-                          title: const Text(
+                          title: Text(
                             'Preferred Currency',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: _titleStyle(context),
                           ),
                           subtitle: const Text(
                             'Used for converted amounts',
@@ -218,7 +282,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : Container(
                                   padding: const EdgeInsets.symmetric(
@@ -226,23 +292,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primarySoft,
-                                    borderRadius:
-                                        BorderRadius.circular(AppRadius.sm),
+                                    color: colors.primarySoft,
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
                                   ),
                                   child: DropdownButton<String>(
                                     value: _preferredCurrency,
                                     underline: const SizedBox(),
                                     isDense: true,
+                                    dropdownColor: colors.surface,
                                     icon: const Icon(
                                       Icons.expand_more,
                                       size: 18,
-                                      color: AppColors.primary,
+                                      color: AppColors.primaryLight,
                                     ),
                                     style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
+                                      color: AppColors.primaryLight,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13.5,
                                     ),
                                     items: _currencies.map((c) {
                                       return DropdownMenuItem(
@@ -259,30 +327,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                         ),
                         ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
                           leading: const Icon(
                             Icons.notifications_active_rounded,
-                            color: AppColors.primary,
+                            color: AppColors.primaryLight,
                           ),
-                          title: const Text(
+                          title: Text(
                             'Reminder Settings',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: _titleStyle(context),
                           ),
                           subtitle: const Text(
                             'Control renewal reminders',
                             style: TextStyle(fontSize: 12),
                           ),
-                          trailing: const Icon(
+                          trailing: Icon(
                             Icons.chevron_right,
-                            color: AppColors.textTertiary,
+                            color: colors.textTertiary,
                           ),
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const ReminderSettingsScreen(),
+                                builder: (_) =>
+                                    const ReminderSettingsScreen(),
                               ),
                             );
                           },
@@ -294,20 +364,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     _sectionHeader('About'),
                     _groupCard(
-                      children: const [
+                      children: [
                         ListTile(
-                          leading: Icon(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          leading: const Icon(
                             Icons.info_outline_rounded,
-                            color: AppColors.primary,
+                            color: AppColors.primaryLight,
                           ),
                           title: Text(
                             'SubTrack',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: _titleStyle(context),
                           ),
-                          subtitle: Text(
+                          subtitle: const Text(
                             'Version 1.0.0',
                             style: TextStyle(fontSize: 12),
                           ),
@@ -319,40 +390,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.82),
+                        color: colors.surface,
                         borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(
-                          color: AppColors.danger.withOpacity(0.15),
-                        ),
+                        boxShadow:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? null
+                                : [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withOpacity(0.04),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                       ),
                       child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.danger.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            color: colors.danger.withOpacity(0.12),
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.sm),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.logout_rounded,
-                            color: AppColors.danger,
+                            color: colors.danger,
                             size: 20,
                           ),
                         ),
-                        title: const Text(
+                        title: Text(
                           'Log Out',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.danger,
+                            fontWeight: FontWeight.w800,
+                            color: colors.danger,
                           ),
                         ),
                         subtitle: const Text(
                           'Sign out of your SubTrack account',
                           style: TextStyle(fontSize: 12),
                         ),
-                        trailing: const Icon(
+                        trailing: Icon(
                           Icons.chevron_right,
-                          color: AppColors.danger,
+                          color: colors.danger,
                         ),
                         onTap: _logout,
                       ),

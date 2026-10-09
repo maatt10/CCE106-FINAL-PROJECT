@@ -60,7 +60,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Please try again.')),
+          const SnackBar(
+            content: Text('Something went wrong. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -128,13 +130,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withOpacity(0.97),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 32,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -143,7 +145,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Back button
+            // Back
             Align(
               alignment: Alignment.centerLeft,
               child: Material(
@@ -165,36 +167,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
+            // Logo — purple tile
             Center(
               child: Container(
-                width: 72,
-                height: 72,
+                width: 128,
+                height: 128,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: AppColors.heroGradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
+                      color: AppColors.primary.withOpacity(0.42),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.person_add_alt_1_rounded,
-                  color: Colors.white,
-                  size: 32,
+                child: Image.asset(
+                  'assets/icon/app_icon.png',
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
 
             const Text(
               'Create account',
@@ -202,24 +205,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+                letterSpacing: -0.7,
                 color: AppColors.textPrimary,
+                height: 1.1,
               ),
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
 
-            Text(
+            const Text(
               'Start tracking your subscriptions in one place.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.4,
+                fontSize: 13.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 30),
 
             TextFormField(
               controller: _emailController,
@@ -229,8 +234,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 prefixIcon: Icon(Icons.email_outlined),
               ),
               validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Please enter your email.';
-                if (!v.contains('@')) return 'Please enter a valid email.';
+                if (v == null || v.trim().isEmpty) {
+                  return 'Please enter your email.';
+                }
+                if (!v.contains('@')) {
+                  return 'Please enter a valid email.';
+                }
                 return null;
               },
             ),
@@ -254,8 +263,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
               validator: (v) {
-                if (v == null || v.isEmpty) return 'Please enter a password.';
-                if (v.length < 6) return 'Use at least 6 characters.';
+                if (v == null || v.isEmpty) {
+                  return 'Please enter a password.';
+                }
+                if (v.length < 6) {
+                  return 'Use at least 6 characters.';
+                }
                 return null;
               },
             ),
@@ -279,8 +292,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
               validator: (v) {
-                if (v == null || v.isEmpty) return 'Please confirm your password.';
-                if (v != _passwordController.text) return 'Passwords do not match.';
+                if (v == null || v.isEmpty) {
+                  return 'Please confirm your password.';
+                }
+                if (v != _passwordController.text) {
+                  return 'Passwords do not match.';
+                }
                 return null;
               },
             ),
@@ -309,8 +326,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     : const Text(
                         'Create Account',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.1,
                         ),
                       ),
               ),
@@ -320,7 +338,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Already have an account?  Sign in'),
+              child: const Text(
+                'Already have an account?  Sign in',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),

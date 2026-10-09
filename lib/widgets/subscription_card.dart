@@ -1,9 +1,12 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/subscription.dart';
 import '../theme/app_theme.dart';
+import '../utils/brand_colors.dart';
 import '../utils/currency_utils.dart';
 import '../screens/subscription_details_screen.dart';
+import 'overdue_badge.dart';
 
 class SubscriptionCard extends StatelessWidget {
   final Subscription subscription;
@@ -40,38 +43,19 @@ class SubscriptionCard extends StatelessWidget {
     }
   }
 
-  Color _autoColor() {
-    const colors = [
-      Color(0xFF6C4CE0),
-      Color(0xFFEC4899),
-      Color(0xFF0EA5E9),
-      Color(0xFF16A34A),
-      Color(0xFFF59E0B),
-      Color(0xFF8B5CF6),
-      Color(0xFFEF4444),
-      Color(0xFF06B6D4),
-    ];
-
-    int hash = 0;
-    for (final c in subscription.name.codeUnits) {
-      hash = c + ((hash << 5) - hash);
-    }
-    return colors[hash.abs() % colors.length];
-  }
-
-  Color _accentColor() {
+  Color _accent() {
     if (subscription.cardColor != null) {
       try {
         final hex = subscription.cardColor!.replaceAll('#', '');
         return Color(int.parse('FF$hex', radix: 16));
       } catch (_) {
-        return _autoColor();
+        return BrandColors.of(subscription.name);
       }
     }
-    return _autoColor();
+    return BrandColors.of(subscription.name);
   }
 
-  Widget _avatar(Color accent) {
+  Widget _avatar(Color accent, bool isDark) {
     final letter = subscription.name.isEmpty
         ? '?'
         : subscription.name[0].toUpperCase();
@@ -80,70 +64,70 @@ class SubscriptionCard extends StatelessWidget {
       width: 52,
       height: 52,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [accent, accent.withOpacity(0.75)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: isDark ? const Color(0xFF23233D) : Colors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: accent.withOpacity(isDark ? 0.35 : 0.2)),
       ),
       alignment: Alignment.center,
       child: subscription.logoUrl.isNotEmpty
           ? ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.md),
-              child: Image.network(
-                subscription.logoUrl,
-                width: 52,
-                height: 52,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Text(
+              child: CachedNetworkImage(
+                imageUrl: subscription.logoUrl,
+                width: 36,
+                height: 36,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => Text(
                   letter,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: accent,
                     fontWeight: FontWeight.w800,
-                    fontSize: 22,
+                    fontSize: 20,
+                  ),
+                ),
+                errorWidget: (_, __, ___) => Text(
+                  letter,
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
                   ),
                 ),
               ),
             )
           : Text(
               letter,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: accent,
                 fontWeight: FontWeight.w800,
-                fontSize: 22,
+                fontSize: 20,
               ),
             ),
     );
   }
 
-  Widget? _statusPill() {
+  Widget? _statusPill(bool isDark) {
     if (subscription.isActive) return null;
 
     final isCancelled = subscription.isCancelled;
-    final color = isCancelled ? AppColors.warning : AppColors.textTertiary;
-    final label = isCancelled ? 'Cancelled' : 'Archived';
+    final color = isCancelled
+        ? (isDark ? AppColors.warningDark : AppColors.warning)
+        : (isDark ? AppColors.textTertiaryDark : AppColors.textTertiary);
+    final label = isCancelled ? 'CANCELLED' : 'ARCHIVED';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
+        color: color.withOpacity(isDark ? 0.2 : 0.14),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
         ),
       ),
     );
@@ -151,8 +135,26 @@ class SubscriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentColor();
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final rawAccent = _accent();
+    // In dark mode lift the accent a bit so text reads clearly.
+    final accent = isDark
+        ? Color.lerp(rawAccent, Colors.white, 0.15) ?? rawAccent
+        : rawAccent;
+
     final isInactive = !subscription.isActive;
+
+    final today = DateTime.now();
+    final todayMidnight = DateTime(today.year, today.month, today.day);
+    final renewalMidnight = DateTime(
+      subscription.renewalDate.year,
+      subscription.renewalDate.month,
+      subscription.renewalDate.day,
+    );
+    final overdueDays = todayMidnight.difference(renewalMidnight).inDays;
+    final isOverdue = subscription.isActive && overdueDays > 0;
 
     final converted = CurrencyUtils.format(convertedPrice, displayCurrency);
     final original = CurrencyUtils.format(
@@ -161,12 +163,20 @@ class SubscriptionCard extends StatelessWidget {
     );
     final showOriginal = subscription.currency != displayCurrency;
 
+    final effectiveAccent = isOverdue
+        ? (isDark ? AppColors.dangerDark : AppColors.danger)
+        : accent;
+
+    // Dark mode uses lower tint opacity; light mode uses the brand tint.
+    final tintOpacity = isDark ? 0.14 : 0.08;
+    final borderOpacity = isDark ? 0.32 : 0.22;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Opacity(
         opacity: isInactive ? 0.55 : 1.0,
         child: Material(
-          color: AppColors.surface,
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -182,18 +192,25 @@ class SubscriptionCard extends StatelessWidget {
               );
             },
             child: Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
+                color: effectiveAccent.withOpacity(tintOpacity),
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: effectiveAccent.withOpacity(borderOpacity),
+                  width: 1,
+                ),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _avatar(accent),
+                  _avatar(effectiveAccent, isDark),
                   const SizedBox(width: AppSpacing.md),
+
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
                           children: [
@@ -202,33 +219,40 @@ class SubscriptionCard extends StatelessWidget {
                                 subscription.name,
                                 style: TextStyle(
                                   fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.2,
-                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                  color: colors.textPrimary,
                                   decoration: isInactive
                                       ? TextDecoration.lineThrough
                                       : null,
-                                  decorationColor: AppColors.textTertiary,
+                                  decorationColor: colors.textTertiary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (_statusPill() != null) ...[
+                            if (isOverdue) ...[
                               const SizedBox(width: 6),
-                              _statusPill()!,
+                              Flexible(
+                                child: OverdueBadge(
+                                  daysOverdue: overdueDays,
+                                ),
+                              ),
+                            ] else if (_statusPill(isDark) != null) ...[
+                              const SizedBox(width: 6),
+                              _statusPill(isDark)!,
                             ],
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           subscription.planName.isNotEmpty
                               ? subscription.planName
                               : subscription.category,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
+                            color: accent,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -236,36 +260,44 @@ class SubscriptionCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.event_outlined,
                               size: 12,
-                              color: AppColors.textTertiary,
+                              color: colors.textTertiary,
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              _formatDate(subscription.renewalDate),
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: AppColors.textTertiary,
-                                fontWeight: FontWeight.w500,
+                            Flexible(
+                              child: Text(
+                                _formatDate(subscription.renewalDate),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colors.textTertiary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Container(
                               width: 3,
                               height: 3,
-                              decoration: const BoxDecoration(
-                                color: AppColors.textTertiary,
+                              decoration: BoxDecoration(
+                                color: colors.textTertiary,
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Text(
-                              subscription.billingCycle,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: AppColors.textTertiary,
-                                fontWeight: FontWeight.w500,
+                            Flexible(
+                              child: Text(
+                                subscription.billingCycle,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colors.textTertiary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -273,77 +305,102 @@ class SubscriptionCard extends StatelessWidget {
                       ],
                     ),
                   ),
+
                   const SizedBox(width: AppSpacing.sm),
+
                   Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          converted,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: AppColors.textPrimary,
+                      SizedBox(
+                        width: 82,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            converted,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                              color: colors.textPrimary,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '/${_billingLabel()}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
-                          fontWeight: FontWeight.w600,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: colors.textTertiary,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       if (showOriginal) ...[
                         const SizedBox(height: 2),
-                        Text(
-                          original,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textTertiary,
-                            fontWeight: FontWeight.w500,
+                        SizedBox(
+                          width: 82,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              original,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: colors.textTertiary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(width: 4),
-                  PopupMenuButton<String>(
-                    padding: EdgeInsets.zero,
-                    iconSize: 18,
-                    icon: const Icon(
-                      Icons.more_vert,
-                      color: AppColors.textTertiary,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
-                    onSelected: (v) {
-                      if (v == 'delete') onDelete();
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.delete_outline,
-                              size: 18,
-                              color: AppColors.danger,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Delete',
-                              style: TextStyle(color: AppColors.danger),
-                            ),
-                          ],
-                        ),
+
+                  SizedBox(
+                    width: 28,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      icon: Icon(
+                        Icons.more_vert,
+                        color: colors.textTertiary,
                       ),
-                    ],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                      onSelected: (v) {
+                        if (v == 'delete') onDelete();
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                size: 18,
+                                color: isDark
+                                    ? AppColors.dangerDark
+                                    : AppColors.danger,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Delete',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppColors.dangerDark
+                                      : AppColors.danger,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

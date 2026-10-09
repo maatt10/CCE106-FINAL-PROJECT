@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/forgot_password_dialog.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -36,7 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Login successful!')),
@@ -46,7 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
       String message = 'Login failed.';
       if (e.code == 'user-not-found') {
         message = 'No account was found with this email.';
-      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+      } else if (e.code == 'wrong-password' ||
+          e.code == 'invalid-credential') {
         message = 'Incorrect email or password.';
       } else if (e.code == 'invalid-email') {
         message = 'Please enter a valid email address.';
@@ -59,7 +60,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Please try again.')),
+          const SnackBar(
+            content: Text('Something went wrong. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -84,7 +87,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Stack(
           children: [
-            // Ambient glows
             Positioned(
               top: -80,
               right: -80,
@@ -128,13 +130,13 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withOpacity(0.97),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 32,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -143,35 +145,35 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Brand mark
+            // Logo — purple tile
             Center(
               child: Container(
-                width: 72,
-                height: 72,
+                width: 128,
+                height: 128,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: AppColors.heroGradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
+                      color: AppColors.primary.withOpacity(0.42),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.subscriptions_rounded,
-                  color: Colors.white,
-                  size: 36,
+                child: Image.asset(
+                  'assets/icon/app_icon.png',
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
 
             const Text(
               'Welcome back',
@@ -179,24 +181,26 @@ class _LoginScreenState extends State<LoginScreen> {
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+                letterSpacing: -0.7,
                 color: AppColors.textPrimary,
+                height: 1.1,
               ),
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
 
-            Text(
+            const Text(
               'Sign in to keep tracking your subscriptions.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.4,
+                fontSize: 13.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 30),
 
             TextFormField(
               controller: _emailController,
@@ -206,8 +210,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 prefixIcon: Icon(Icons.email_outlined),
               ),
               validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Please enter your email.';
-                if (!v.contains('@')) return 'Please enter a valid email.';
+                if (v == null || v.trim().isEmpty) {
+                  return 'Please enter your email.';
+                }
+                if (!v.contains('@')) {
+                  return 'Please enter a valid email.';
+                }
                 return null;
               },
             ),
@@ -231,12 +239,37 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               validator: (v) {
-                if (v == null || v.isEmpty) return 'Please enter your password.';
+                if (v == null || v.isEmpty) {
+                  return 'Please enter your password.';
+                }
                 return null;
               },
             ),
 
-            const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => showForgotPasswordDialog(
+                  context,
+                  initialEmail: _emailController.text.trim(),
+                ),
+                style: TextButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Forgot password?',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
 
             SizedBox(
               height: 54,
@@ -260,8 +293,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     : const Text(
                         'Sign In',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.1,
                         ),
                       ),
               ),
@@ -273,10 +307,18 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(),
+                  ),
                 );
               },
-              child: const Text("Don't have an account?  Register"),
+              child: const Text(
+                "Don't have an account?  Register",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),

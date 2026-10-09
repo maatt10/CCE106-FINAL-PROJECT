@@ -1,9 +1,12 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/popular_subscriptions.dart';
 import '../models/popular_subscription.dart';
 import '../models/subscription.dart';
+import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/brand_colors.dart';
 import '../widgets/app_background.dart';
 import 'subscription_plan_screen.dart';
 
@@ -18,13 +21,55 @@ class PopularSubscriptionsScreen extends StatefulWidget {
 class _PopularSubscriptionsScreenState
     extends State<PopularSubscriptionsScreen> {
   final _searchController = TextEditingController();
+  final _firestoreService = FirestoreService();
+
   String _query = '';
   String _selectedCategory = 'All';
+
+  List<Subscription> _existingSubs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExisting();
+  }
+
+  Future<void> _loadExisting() async {
+    try {
+      final snapshot = await _firestoreService.getSubscriptions().first;
+      final subs = snapshot.docs
+          .map((doc) => Subscription.fromMap(doc.data()))
+          .toList();
+      if (!mounted) return;
+      setState(() => _existingSubs = subs);
+    } catch (_) {
+      // Silent — badges just won't render.
+    }
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// True if the user already owns (service, plan).
+  bool _isPlanOwned(String serviceName, String planName) {
+    final s = serviceName.trim().toLowerCase();
+    final p = planName.trim().toLowerCase();
+    for (final sub in _existingSubs) {
+      if (sub.name.trim().toLowerCase() == s &&
+          sub.planName.trim().toLowerCase() == p) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int _ownedCount(PopularSubscription ps) {
+    return ps.plans
+        .where((p) => _isPlanOwned(ps.name, p.name))
+        .length;
   }
 
   List<String> get _categories {
@@ -40,8 +85,7 @@ class _PopularSubscriptionsScreenState
   List<PopularSubscription> get _filtered {
     final q = _query.trim().toLowerCase();
     return popularSubscriptions.where((s) {
-      final matchesSearch =
-          q.isEmpty || s.name.toLowerCase().contains(q);
+      final matchesSearch = q.isEmpty || s.name.toLowerCase().contains(q);
       final matchesCat =
           _selectedCategory == 'All' || s.category == _selectedCategory;
       return matchesSearch && matchesCat;
@@ -50,10 +94,11 @@ class _PopularSubscriptionsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final list = _filtered;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Popular Subscriptions')),
+      appBar: AppBar(title: const Text('Browse')),
       body: AppBackground(
         child: SafeArea(
           child: Column(
@@ -63,22 +108,28 @@ class _PopularSubscriptionsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Choose a Service',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: AppColors.textPrimary,
+                    Text(
+                      'POPULAR SERVICES',
+                      style: AppType.microLabel.copyWith(
+                        color: colors.textTertiary,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Pick a service to view its available plans.',
+                    const SizedBox(height: 6),
+                    Text(
+                      'Pick a service',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.8,
+                        color: colors.textPrimary,
+                        height: 1,
                       ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Choose a plan to prefill the details.',
+                      style: AppType.secondary
+                          .copyWith(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -104,7 +155,6 @@ class _PopularSubscriptionsScreenState
 
               const SizedBox(height: 12),
 
-              // Category chips row
               SizedBox(
                 height: 36,
                 child: ListView.separated(
@@ -116,7 +166,8 @@ class _PopularSubscriptionsScreenState
                     final cat = _categories[i];
                     final selected = cat == _selectedCategory;
                     return GestureDetector(
-                      onTap: () => setState(() => _selectedCategory = cat),
+                      onTap: () =>
+                          setState(() => _selectedCategory = cat),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(
@@ -125,24 +176,24 @@ class _PopularSubscriptionsScreenState
                         ),
                         decoration: BoxDecoration(
                           color: selected
-                              ? AppColors.primary
-                              : Colors.white.withOpacity(0.82),
+                              ? Theme.of(context).colorScheme.primary
+                              : colors.surface,
                           borderRadius:
                               BorderRadius.circular(AppRadius.pill),
                           border: Border.all(
                             color: selected
-                                ? AppColors.primary
-                                : AppColors.primary.withOpacity(0.12),
+                                ? Theme.of(context).colorScheme.primary
+                                : colors.border,
                           ),
                         ),
                         child: Text(
                           cat,
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                             color: selected
                                 ? Colors.white
-                                : AppColors.textPrimary,
+                                : colors.textPrimary,
                           ),
                         ),
                       ),
@@ -155,14 +206,23 @@ class _PopularSubscriptionsScreenState
 
               Expanded(
                 child: list.isEmpty
-                    ? _emptyState()
+                    ? _emptyState(context)
                     : ListView.builder(
                         padding:
                             const EdgeInsets.fromLTRB(16, 0, 16, 32),
                         itemCount: list.length,
                         itemBuilder: (context, i) {
-                          return _PopularSubscriptionCard(
-                            subscription: list[i],
+                          final ps = list[i];
+                          final owned = _ownedCount(ps);
+                          final total = ps.plans.length;
+                          final allOwned = owned == total && total > 0;
+
+                          return _PopularCard(
+                            subscription: ps,
+                            ownedCount: owned,
+                            totalPlans: total,
+                            allOwned: allOwned,
+                            existingSubscriptions: _existingSubs,
                             onSelected: (result) =>
                                 Navigator.pop(context, result),
                           );
@@ -176,7 +236,9 @@ class _PopularSubscriptionsScreenState
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(BuildContext context) {
+    final colors = context.colors;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -185,31 +247,32 @@ class _PopularSubscriptionsScreenState
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: AppColors.primarySoft,
+              decoration: BoxDecoration(
+                color: colors.primarySoft,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.search_off,
                 size: 40,
-                color: AppColors.primary,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'No services found',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
+                letterSpacing: -0.3,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Try a different search term or category.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
                 fontSize: 13,
               ),
             ),
@@ -220,25 +283,44 @@ class _PopularSubscriptionsScreenState
   }
 }
 
-class _PopularSubscriptionCard extends StatelessWidget {
+class _PopularCard extends StatelessWidget {
   final PopularSubscription subscription;
+  final int ownedCount;
+  final int totalPlans;
+  final bool allOwned;
+  final List<Subscription> existingSubscriptions;
   final ValueChanged<Subscription> onSelected;
 
-  const _PopularSubscriptionCard({
+  const _PopularCard({
     required this.subscription,
+    required this.ownedCount,
+    required this.totalPlans,
+    required this.allOwned,
+    required this.existingSubscriptions,
     required this.onSelected,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final rawAccent = BrandColors.of(subscription.name);
+    final accent = isDark
+        ? Color.lerp(rawAccent, Colors.white, 0.15) ?? rawAccent
+        : rawAccent;
+
     final initial = subscription.name.isEmpty
         ? '?'
         : subscription.name[0].toUpperCase();
 
+    final tintOpacity = isDark ? 0.14 : 0.06;
+    final borderOpacity = isDark ? 0.32 : 0.22;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: Colors.white.withOpacity(0.82),
+        color: accent.withOpacity(tintOpacity),
         borderRadius: BorderRadius.circular(AppRadius.lg),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -246,8 +328,10 @@ class _PopularSubscriptionCard extends StatelessWidget {
             final result = await Navigator.push<Subscription>(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    SubscriptionPlanScreen(subscription: subscription),
+                builder: (_) => SubscriptionPlanScreen(
+                  subscription: subscription,
+                  existingSubscriptions: existingSubscriptions,
+                ),
               ),
             );
             if (!context.mounted || result == null) return;
@@ -258,7 +342,7 @@ class _PopularSubscriptionCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
-                color: AppColors.primary.withOpacity(0.08),
+                color: accent.withOpacity(borderOpacity),
               ),
             ),
             child: Row(
@@ -266,34 +350,44 @@ class _PopularSubscriptionCard extends StatelessWidget {
                 Container(
                   width: 52,
                   height: 52,
+                  padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
+                    color: isDark
+                        ? const Color(0xFF23233D)
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: accent.withOpacity(isDark ? 0.35 : 0.2),
+                    ),
                   ),
                   alignment: Alignment.center,
                   child: subscription.logoUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.md),
-                          child: Image.network(
-                            subscription.logoUrl,
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Text(
-                              initial,
-                              style: const TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
+                      ? CachedNetworkImage(
+                          imageUrl: subscription.logoUrl,
+                          width: 34,
+                          height: 34,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => Text(
+                            initial,
+                            style: TextStyle(
+                              color: accent,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
+                            ),
+                          ),
+                          errorWidget: (_, __, ___) => Text(
+                            initial,
+                            style: TextStyle(
+                              color: accent,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
                             ),
                           ),
                         )
                       : Text(
                           initial,
-                          style: const TextStyle(
-                            color: AppColors.primary,
+                          style: TextStyle(
+                            color: accent,
                             fontWeight: FontWeight.w800,
                             fontSize: 20,
                           ),
@@ -303,39 +397,100 @@ class _PopularSubscriptionCard extends StatelessWidget {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              subscription.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                letterSpacing: -0.3,
+                                color: colors.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (ownedCount > 0) ...[
+                            const SizedBox(width: 8),
+                            _OwnedBadge(
+                              ownedCount: ownedCount,
+                              totalPlans: totalPlans,
+                              allOwned: allOwned,
+                              accent: accent,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
                       Text(
-                        subscription.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          letterSpacing: -0.2,
-                          color: AppColors.textPrimary,
+                        '${subscription.category}  •  '
+                        '$totalPlans ${totalPlans == 1 ? "plan" : "plans"}',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${subscription.category}  •  '
-                        '${subscription.plans.length} '
-                        '${subscription.plans.length == 1 ? "plan" : "plans"}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.chevron_right,
-                  color: AppColors.textTertiary,
+                  color: accent.withOpacity(0.6),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OwnedBadge extends StatelessWidget {
+  final int ownedCount;
+  final int totalPlans;
+  final bool allOwned;
+  final Color accent;
+
+  const _OwnedBadge({
+    required this.ownedCount,
+    required this.totalPlans,
+    required this.allOwned,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final label = allOwned
+        ? 'ALL ADDED'
+        : '$ownedCount/$totalPlans ADDED';
+
+    final bg = allOwned
+        ? colors.textTertiary.withOpacity(0.15)
+        : accent.withOpacity(0.15);
+    final fg = allOwned ? colors.textSecondary : accent;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: fg,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
         ),
       ),
     );

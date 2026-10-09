@@ -11,6 +11,8 @@ class AddSubscriptionChoiceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Add Subscription')),
       body: AppBackground(
@@ -21,36 +23,50 @@ class AddSubscriptionChoiceScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 8),
-                const Text(
-                  'How would you like to add it?',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: AppColors.textPrimary,
+
+                Text(
+                  'ADD A SUBSCRIPTION',
+                  style: AppType.microLabel.copyWith(
+                    color: colors.textTertiary,
                   ),
                 ),
+
                 const SizedBox(height: 6),
-                const Text(
-                  'Choose from popular services or enter your own subscription.',
+
+                Text(
+                  'How would you\nlike to add it?',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                    height: 1.4,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.9,
+                    height: 1.1,
+                    color: colors.textPrimary,
                   ),
                 ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'Browse a catalog of popular services or enter the details yourself.',
+                  style: AppType.secondary.copyWith(
+                    color: colors.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+
                 const SizedBox(height: 28),
 
                 _ChoiceCard(
                   title: 'Popular Subscriptions',
-                  subtitle: 'Pick a service and choose from existing plans.',
+                  subtitle: 'Pick a service and choose from its plans.',
                   icon: Icons.auto_awesome_rounded,
                   gradient: AppColors.heroGradient,
                   onTap: () async {
                     final result = await Navigator.push<Subscription>(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const PopularSubscriptionsScreen(),
+                        builder: (_) =>
+                            const PopularSubscriptionsScreen(),
                       ),
                     );
                     if (!context.mounted || result == null) return;
@@ -102,8 +118,18 @@ class _ChoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // In dark mode fade the gradient slightly so it doesn't glow too hard.
+    final effectiveGradient = isDark
+        ? gradient
+            .map((c) => Color.lerp(c, Colors.black, 0.15) ?? c)
+            .toList()
+        : gradient;
+
     return Material(
-      color: Colors.white.withOpacity(0.82),
+      color: colors.surface,
       borderRadius: BorderRadius.circular(AppRadius.lg),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -112,7 +138,16 @@ class _ChoiceCard extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+            border: Border.all(color: colors.border),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
           ),
           child: Row(
             children: [
@@ -121,16 +156,16 @@ class _ChoiceCard extends StatelessWidget {
                 height: 56,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: gradient,
+                    colors: effectiveGradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(AppRadius.md),
                   boxShadow: [
                     BoxShadow(
-                      color: gradient.first.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      color: effectiveGradient.first.withOpacity(0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -143,28 +178,29 @@ class _ChoiceCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: colors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: colors.textSecondary,
                         height: 1.35,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                color: AppColors.textTertiary,
+                color: colors.textTertiary,
               ),
             ],
           ),

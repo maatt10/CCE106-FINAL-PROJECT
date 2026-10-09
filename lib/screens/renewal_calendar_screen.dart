@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/subscription.dart';
 import '../theme/app_theme.dart';
+import '../utils/brand_colors.dart';
 import '../utils/currency_utils.dart';
 import '../widgets/app_background.dart';
 
@@ -86,8 +87,31 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
     return _formatDate(d);
   }
 
-  // ===== Calendar =====
-  Widget _buildCalendar() {
+  Widget _navBtn(BuildContext context, IconData icon, VoidCallback onTap) {
+    final colors = context.colors;
+    return Material(
+      color: colors.primarySoft,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(
+            icon,
+            size: 20,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendar(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final first = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
     final daysInMonth =
         DateTime(_displayedMonth.year, _displayedMonth.month + 1, 0).day;
@@ -97,38 +121,48 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withOpacity(0.08)),
+        border: Border.all(color: colors.border),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _navBtn(Icons.chevron_left, () => _changeMonth(-1)),
+              _navBtn(context, Icons.chevron_left, () => _changeMonth(-1)),
               Column(
                 children: [
                   Text(
                     _monthName(_displayedMonth.month),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.2,
+                      fontWeight: FontWeight.w800,
+                      color: colors.textPrimary,
+                      letterSpacing: -0.3,
                     ),
                   ),
                   Text(
                     '${_displayedMonth.year}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    style: TextStyle(
+                      color: colors.textTertiary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
                     ),
                   ),
                 ],
               ),
-              _navBtn(Icons.chevron_right, () => _changeMonth(1)),
+              _navBtn(context, Icons.chevron_right, () => _changeMonth(1)),
             ],
           ),
 
@@ -172,8 +206,10 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     gradient: selected
-                        ? const LinearGradient(
-                            colors: AppColors.heroGradient,
+                        ? LinearGradient(
+                            colors: isDark
+                                ? AppColors.heroGradientDark
+                                : AppColors.heroGradient,
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
@@ -182,7 +218,7 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: today && !selected
                         ? Border.all(
-                            color: AppColors.primary,
+                            color: Theme.of(context).colorScheme.primary,
                             width: 1.5,
                           )
                         : null,
@@ -196,12 +232,12 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
                           fontSize: 13,
                           fontWeight: today || selected
                               ? FontWeight.w800
-                              : FontWeight.w500,
+                              : FontWeight.w600,
                           color: selected
                               ? Colors.white
                               : today
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
+                                  ? Theme.of(context).colorScheme.primary
+                                  : colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -213,7 +249,7 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
                             shape: BoxShape.circle,
                             color: selected
                                 ? Colors.white
-                                : AppColors.primary,
+                                : Theme.of(context).colorScheme.primary,
                           ),
                         )
                       else
@@ -229,40 +265,21 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
     );
   }
 
-  Widget _navBtn(IconData icon, VoidCallback onTap) {
-    return Material(
-      color: AppColors.primarySoft,
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        onTap: onTap,
-        child: SizedBox(
-          width: 36,
-          height: 36,
-          child: Icon(icon, size: 20, color: AppColors.primary),
-        ),
-      ),
-    );
-  }
-
-  // ===== Selected date detail =====
-  Widget _buildSelectedDate() {
+  Widget _buildSelectedDate(BuildContext context) {
+    final colors = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final subs = _subsForDate(_selectedDate);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Renewals',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                  color: AppColors.textPrimary,
-                ),
+                style: AppType.section.copyWith(color: colors.textPrimary),
               ),
             ),
             TextButton.icon(
@@ -277,11 +294,7 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
 
         Text(
           _formatDate(_selectedDate),
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
+          style: AppType.secondary.copyWith(color: colors.textSecondary),
         ),
 
         const SizedBox(height: 12),
@@ -291,40 +304,47 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: colors.surface,
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.08),
-              ),
+              border: Border.all(color: colors.border),
+              boxShadow: isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: Column(
               children: [
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primarySoft,
+                  decoration: BoxDecoration(
+                    color: colors.primarySoft,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.event_available_rounded,
                     size: 26,
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'No renewals on this date',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: AppColors.textPrimary,
+                    color: colors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Pick another day to see its renewals.',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                     fontSize: 12,
                   ),
                 ),
@@ -332,109 +352,123 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
             ),
           )
         else
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.08),
-              ),
-            ),
-            child: Column(
-              children: [
-                ...subs.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final s = entry.value;
-                  final rate = widget.rates[s.currency] ?? 1.0;
-                  final converted = s.price * rate;
-                  final amount = CurrencyUtils.format(
-                    converted,
-                    widget.preferredCurrency,
-                  );
-                  final planText = s.planName.isNotEmpty
-                      ? s.planName
-                      : s.category;
+          ...subs.map((s) {
+            final rawAccent = BrandColors.of(s.name);
+            final accent = isDark
+                ? Color.lerp(rawAccent, Colors.white, 0.15) ?? rawAccent
+                : rawAccent;
 
-                  return Column(
-                    children: [
-                      ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        leading: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: AppColors.heroGradient,
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.md),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            s.name.isEmpty
-                                ? '?'
-                                : s.name[0].toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          s.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '$planText • ${s.billingCycle}',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12.5,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              amount,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              _renewalLabel(s.renewalDate),
-                              style: const TextStyle(
-                                color: AppColors.textTertiary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+            final rate = widget.rates[s.currency] ?? 1.0;
+            final converted = s.price * rate;
+            final amount = CurrencyUtils.format(
+              converted,
+              widget.preferredCurrency,
+            );
+            final planText =
+                s.planName.isNotEmpty ? s.planName : s.category;
+            final initial =
+                s.name.isEmpty ? '?' : s.name[0].toUpperCase();
+
+            final tintOpacity = isDark ? 0.14 : 0.06;
+            final borderOpacity = isDark ? 0.32 : 0.22;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(tintOpacity),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border: Border.all(
+                    color: accent.withOpacity(borderOpacity),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF23233D)
+                            : Colors.white,
+                        borderRadius:
+                            BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(
+                          color: accent.withOpacity(isDark ? 0.35 : 0.2),
                         ),
                       ),
-                      if (i < subs.length - 1)
-                        const Divider(
-                          height: 1,
-                          indent: 16,
-                          endIndent: 16,
+                      alignment: Alignment.center,
+                      child: Text(
+                        initial,
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
                         ),
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            s.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              letterSpacing: -0.2,
+                              color: colors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '$planText • ${s.billingCycle}',
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          amount,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            letterSpacing: -0.3,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _renewalLabel(s.renewalDate),
+                          style: TextStyle(
+                            color: colors.textTertiary,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
       ],
     );
   }
@@ -442,7 +476,7 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Renewal Calendar')),
+      appBar: AppBar(title: const Text('Calendar')),
       body: AppBackground(
         child: SafeArea(
           child: SingleChildScrollView(
@@ -450,9 +484,9 @@ class _RenewalCalendarScreenState extends State<RenewalCalendarScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildCalendar(),
+                _buildCalendar(context),
                 const SizedBox(height: 24),
-                _buildSelectedDate(),
+                _buildSelectedDate(context),
               ],
             ),
           ),
@@ -472,11 +506,11 @@ class _Weekday extends StatelessWidget {
       child: Center(
         child: Text(
           text,
-          style: const TextStyle(
-            color: AppColors.textTertiary,
+          style: TextStyle(
+            color: context.colors.textTertiary,
             fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
           ),
         ),
       ),

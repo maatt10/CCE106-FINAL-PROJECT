@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// Wraps any screen with a soft layered gradient + ambient glow blobs.
-/// Gives the app visual depth without being busy.
 class AppBackground extends StatelessWidget {
   final Widget child;
 
@@ -11,46 +9,75 @@ class AppBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF6F3FF), // lavender mist
-            Color(0xFFF7F7FB), // base
-            Color(0xFFF1F7FF), // ice blue
-          ],
-          stops: [0.0, 0.55, 1.0],
+          colors: isDark
+              ? const [
+                  Color(0xFF14142B),
+                  Color(0xFF0F0F1A),
+                  Color(0xFF12122A),
+                ]
+              : const [
+                  Color(0xFFF4F0FF),
+                  Color(0xFFF8F8FC),
+                  Color(0xFFF0F5FF),
+                ],
+          stops: const [0.0, 0.5, 1.0],
         ),
       ),
       child: Stack(
         children: [
-          // Ambient glow — top right
           Positioned(
-            top: -120,
+            top: -140,
             right: -100,
             child: _Glow(
-              color: AppColors.primary.withOpacity(0.18),
+              color: (isDark ? AppColors.primaryLight : AppColors.primary)
+                  .withOpacity(isDark ? 0.22 : 0.16),
+              size: 280,
+            ),
+          ),
+          Positioned(
+            top: 240,
+            left: -140,
+            child: _Glow(
+              color: (isDark ? AppColors.infoDark : AppColors.info)
+                  .withOpacity(isDark ? 0.12 : 0.08),
+              size: 240,
+            ),
+          ),
+          Positioned(
+            bottom: -160,
+            right: -100,
+            child: _Glow(
+              color: (isDark ? AppColors.primaryLight : AppColors.primary)
+                  .withOpacity(isDark ? 0.14 : 0.07),
               size: 260,
             ),
           ),
-          // Ambient glow — mid left
           Positioned(
-            top: 220,
-            left: -120,
-            child: _Glow(
-              color: AppColors.info.withOpacity(0.10),
-              size: 220,
-            ),
-          ),
-          // Ambient glow — bottom right
-          Positioned(
-            bottom: -140,
-            right: -80,
-            child: _Glow(
-              color: AppColors.primary.withOpacity(0.08),
-              size: 240,
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 120,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      (isDark ? Colors.black : Colors.white)
+                          .withOpacity(isDark ? 0.15 : 0.35),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
           child,
@@ -75,10 +102,7 @@ class _Glow extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            colors: [
-              color,
-              color.withOpacity(0.0),
-            ],
+            colors: [color, color.withOpacity(0.0)],
             stops: const [0.0, 1.0],
           ),
         ),
